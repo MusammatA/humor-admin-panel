@@ -84,14 +84,20 @@
       <svg id="chart" role="img" aria-label="Bubble chart of meme popularity"></svg>
     </main>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
     <script>
       const SUPABASE_URL = "https://qihsgnfjqmkjmoowyfbn.supabase.co";
       const SUPABASE_ANON_KEY =
         "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFpaHNnbmZqcW1ram1vb3d5ZmJuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1Mjc0MDAsImV4cCI6MjA2NTEwMzQwMH0.c9UQS_o2bRygKOEdnuRx7x7PeSf_OUGDtf9l3fMqMSQ";
 
       const statusEl = document.getElementById("status");
+      if (!window.d3 || !window.supabase || !window.supabase.createClient) {
+        statusEl.textContent =
+          "Error: Could not load chart libraries. Check internet access and script loading.";
+        throw new Error("D3 or Supabase browser library failed to load.");
+      }
+
       const svg = d3.select("#chart");
       const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
       let cachedItems = [];
