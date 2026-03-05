@@ -33,6 +33,12 @@ export function CaptionsManager() {
   const [saving, setSaving] = useState(false);
 
   async function loadCaptions() {
+    if (!supabase) {
+      setError("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -53,6 +59,7 @@ export function CaptionsManager() {
   }, []);
 
   async function handleDelete(id: string) {
+    if (!supabase) return;
     setError(null);
     const confirmed = window.confirm("Delete this caption?");
     if (!confirmed) return;
@@ -72,7 +79,7 @@ export function CaptionsManager() {
   }
 
   async function saveEdit() {
-    if (!editing) return;
+    if (!editing || !supabase) return;
     setSaving(true);
     setError(null);
 

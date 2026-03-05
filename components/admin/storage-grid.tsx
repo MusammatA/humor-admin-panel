@@ -22,6 +22,12 @@ export function StorageGrid({ bucketName }: StorageGridProps) {
   const [error, setError] = useState<string | null>(null);
 
   async function listBucketFiles() {
+    if (!supabase) {
+      setError("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
