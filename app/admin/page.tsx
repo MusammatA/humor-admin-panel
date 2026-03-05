@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { StatCard } from "../../components/stat-card";
 import { CaptionsManager } from "../../components/admin/captions-manager";
 import { StorageGrid } from "../../components/admin/storage-grid";
+import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../lib/supabase-config";
 
 type CaptionRow = {
   user_id: string | null;
@@ -34,10 +35,7 @@ function inferTopic(caption: CaptionRow): string | null {
 }
 
 async function getDashboardStats() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnon) {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return {
       totalImages: 0,
       mostActiveUser: "Unavailable",
@@ -47,7 +45,7 @@ async function getDashboardStats() {
     };
   }
 
-  const supabase = createClient(supabaseUrl, supabaseAnon, {
+  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
