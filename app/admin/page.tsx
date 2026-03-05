@@ -1,6 +1,8 @@
 import { ImageIcon, Sparkles, UserRound } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
 import { StatCard } from "../../components/stat-card";
+import { CaptionsManager } from "../../components/admin/captions-manager";
+import { StorageGrid } from "../../components/admin/storage-grid";
 
 type CaptionRow = {
   user_id: string | null;
@@ -186,6 +188,9 @@ export default async function AdminDashboardPage() {
             )}
           </ul>
         </section>
+
+        <CaptionsManager />
+        <StorageGrid bucketName="images" />
       </div>
     </main>
   );
