@@ -2,45 +2,13 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "../../../lib/supabase-browser";
 
 export default function AuthCallbackPage() {
   const router = useRouter();
 
   useEffect(() => {
-    let mounted = true;
-
-    const completeSignIn = async () => {
-      try {
-        const supabase = createSupabaseBrowserClient();
-        if (!supabase) {
-          throw new Error("Missing Supabase environment variables.");
-        }
-
-        const code = new URLSearchParams(window.location.search).get("code");
-        if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          if (error) throw error;
-        } else {
-          const {
-            data: { session },
-            error,
-          } = await supabase.auth.getSession();
-          if (error) throw error;
-          if (!session) throw new Error("No active session found.");
-        }
-
-        if (mounted) router.replace("/admin");
-      } catch (_error) {
-        if (mounted) router.replace("/login?error=signin_failed");
-      }
-    };
-
-    void completeSignIn();
-
-    return () => {
-      mounted = false;
-    };
+    const qs = window.location.search || "";
+    router.replace(`/auth/confirm${qs}`);
   }, [router]);
 
   return (
