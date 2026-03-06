@@ -209,7 +209,9 @@ export function UserActivityManager() {
       user.email.toLowerCase().endsWith("@columbia.edu")
     );
     if (!q) return columbiaUsers;
-    return columbiaUsers.filter((user) => user.email.toLowerCase().includes(q));
+    return columbiaUsers.filter((user) =>
+      `${user.name} ${user.email}`.toLowerCase().includes(q)
+    );
   }, [directory, query]);
 
   useEffect(() => {
@@ -396,7 +398,7 @@ export function UserActivityManager() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search Columbia email (example: mea2222@columbia.edu)"
+          placeholder="Search Columbia user by name or email"
           className="w-full border-none bg-transparent text-sm outline-none"
         />
       </div>
