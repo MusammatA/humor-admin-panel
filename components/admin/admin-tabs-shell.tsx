@@ -35,15 +35,14 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>("data");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [adminModeEnabled, setAdminModeEnabled] = useState(false);
   const [currentEmail, setCurrentEmail] = useState("");
   const [roleLoading, setRoleLoading] = useState(true);
   const [roleError, setRoleError] = useState<string | null>(null);
-  const ADMIN_MODE_INTENT_KEY = "admin_mode_intent_v1";
 
   async function loadRole() {
     if (!supabase) {
       setRoleError("Supabase client not available.");
+      setActiveTab("data");
       setRoleLoading(false);
       return;
     }
@@ -52,9 +51,7 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
     setRoleError(null);
     // Default to least privilege while role is being re-resolved.
     setIsAdmin(false);
-    setAdminModeEnabled(false);
     try {
-      const hasAdminIntent = typeof window !== "undefined" && sessionStorage.getItem(ADMIN_MODE_INTENT_KEY) === "1";
       const res = await fetch("/api/admin-status", { cache: "no-store" });
       const payload = await res.json().catch(() => ({}));
 
@@ -65,10 +62,7 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       if (!authenticated) {
         setCurrentEmail("");
         setIsAdmin(false);
-        setAdminModeEnabled(false);
-        if (typeof window !== "undefined") {
-          sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
-        }
+        setActiveTab("data");
         setRoleLoading(false);
         return;
       }
@@ -76,24 +70,14 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       setCurrentEmail(email);
       setIsAdmin(superadmin);
       if (!superadmin) {
-        setAdminModeEnabled(false);
-        if (hasAdminIntent) {
-          await supabase.auth.signOut();
-          setCurrentEmail("");
-          setRoleError("Admin login denied: this Google account is not a superadmin in Supabase.");
-        }
-        if (typeof window !== "undefined") {
-          sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
-        }
-      } else {
-        setAdminModeEnabled(hasAdminIntent);
+        setRoleError("Sorry, you don't have Supabase access.");
+        setActiveTab("data");
       }
       setRoleLoading(false);
     } catch (_err) {
       setRoleError("Could not resolve admin status.");
       setCurrentEmail("");
       setIsAdmin(false);
-      setAdminModeEnabled(false);
       setRoleLoading(false);
     }
   }
@@ -112,9 +96,6 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   async function handleAdminLogin() {
     if (!supabase) return;
     setRoleError(null);
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem(ADMIN_MODE_INTENT_KEY, "1");
-    }
     // Force Google account chooser so a viewer can switch into an admin account.
     await supabase.auth.signOut();
     const { error } = await supabase.auth.signInWithOAuth({
@@ -131,7 +112,10 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
     }
   }
 
-  const canEdit = !roleLoading && isAdmin && adminModeEnabled;
+  const canEdit = !roleLoading && isAdmin;
+  const visibleTabs = canEdit
+    ? TAB_ITEMS
+    : TAB_ITEMS.filter((item) => item.id === "admin-login" || item.id === "data");
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -166,8 +150,6 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
             ? "Checking permissions..."
             : canEdit
             ? `Role: Superadmin Editor (${currentEmail || "signed in"})`
-            : isAdmin
-            ? `Role: Superadmin (read-only until Admin Login is enabled)`
             : currentEmail
             ? `Role: Viewer (${currentEmail})`
             : "Role: Guest Viewer"}
@@ -175,25 +157,17 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
         {roleError ? <p className="mt-2 text-xs text-rose-600">{roleError}</p> : null}
 
         <nav className="mt-4 space-y-2">
-          {TAB_ITEMS.map((item) => {
+          {visibleTabs.map((item) => {
             const Icon = item.icon;
             const selected = activeTab === item.id;
-            const usersTabLocked = item.id === "users" && !canEdit;
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => {
-                  if (usersTabLocked) {
-                    setActiveTab("admin-login");
-                    setRoleError("View users by signing in as admin.");
-                    setSidebarOpen(false);
-                    return;
-                  }
                   setActiveTab(item.id);
                   setSidebarOpen(false);
                 }}
-                title={usersTabLocked ? "View users by signing in as admin" : undefined}
                 className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
                   selected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
@@ -207,6 +181,12 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       </aside>
 
       <div className="mx-auto max-w-7xl p-6 pt-20 md:p-10 md:pt-20">
+        {roleError ? (
+          <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {roleError}
+          </p>
+        ) : null}
+
         {activeTab === "admin-login" ? (
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h1 className="text-2xl font-semibold text-slate-900">Admin Access</h1>

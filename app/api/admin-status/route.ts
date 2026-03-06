@@ -45,17 +45,36 @@ export async function GET() {
     return NextResponse.json({ authenticated: false, isSuperadmin: false, email: "" }, { status: 200 });
   }
 
-  const { data: profile } = await supabase
+  const userId = String(user.id || "").trim();
+  const userEmail = String(user.email || "").trim();
+
+  // Superadmin status is read-only from profiles.
+  // This endpoint never writes roles and only trusts the authenticated user's profile row.
+  const { data: profileById, error: profileError } = await supabase
     .from("profiles")
-    .select("is_superadmin")
-    .eq("id", user.id)
+    .select("id, email, is_superadmin")
+    .eq("id", userId)
     .maybeSingle();
+
+  if (profileError) {
+    return NextResponse.json(
+      {
+        authenticated: true,
+        isSuperadmin: false,
+        email: userEmail,
+        error: profileError.message,
+      },
+      { status: 200 },
+    );
+  }
+
+  const isSuperadmin = parseIsSuperadmin(profileById?.is_superadmin);
 
   return NextResponse.json(
     {
       authenticated: true,
-      isSuperadmin: parseIsSuperadmin(profile?.is_superadmin),
-      email: user.email || "",
+      isSuperadmin,
+      email: userEmail,
     },
     { status: 200 },
   );
