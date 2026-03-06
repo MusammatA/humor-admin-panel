@@ -131,10 +131,11 @@ export default function LoginPage() {
 
     await supabase.auth.signOut();
 
+    const callbackUrl = `${window.location.origin}/auth/callback`;
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: `${window.location.origin}/auth/confirm`,
+        redirectTo: callbackUrl,
         skipBrowserRedirect: true,
         queryParams: {
           prompt: "select_account",
@@ -149,6 +150,21 @@ export default function LoginPage() {
       return;
     }
     if (data?.url) {
+      try {
+        const oauthUrl = new URL(data.url);
+        const redirectTarget = oauthUrl.searchParams.get("redirect_to") || "";
+        if (!redirectTarget || !redirectTarget.startsWith(window.location.origin)) {
+          setSigninError(
+            `OAuth redirect mismatch. Expected ${window.location.origin}, got ${redirectTarget || "missing redirect_to"}. Update Supabase Auth redirect URLs.`,
+          );
+          setSigningIn(false);
+          return;
+        }
+      } catch (_err) {
+        setSigninError("Could not validate OAuth redirect URL.");
+        setSigningIn(false);
+        return;
+      }
       window.location.assign(data.url);
       return;
     }
