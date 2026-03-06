@@ -402,6 +402,9 @@ export function DataTab({ stats }: DataTabProps) {
   }, [captions]);
 
   const packedWords = useMemo(() => packBubbles(topWords), [topWords]);
+  const topThreeTopics = topWords.slice(0, 3);
+  const topTopicLabel = topThreeTopics[0]?.label ?? "N/A";
+  const topTopicCount = topThreeTopics[0]?.value ?? 0;
 
   const topActiveUsers = useMemo(() => {
     const imageIdsByUser = new Map<string, Set<string>>();
@@ -520,8 +523,8 @@ export function DataTab({ stats }: DataTabProps) {
         />
         <StatCard
           title="Top Topic"
-          value={stats.topTopics[0]?.topic ?? "N/A"}
-          subtitle={stats.topTopics[0] ? `${stats.topTopics[0].count} mentions` : "No topic data"}
+          value={topTopicLabel}
+          subtitle={topTopicCount > 0 ? `${topTopicCount} mentions` : "No topic data"}
           icon={Type}
         />
         <StatCard
@@ -575,6 +578,28 @@ export function DataTab({ stats }: DataTabProps) {
                 </g>
               ))}
             </svg>
+          </div>
+        )}
+      </article>
+
+      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="text-base font-semibold text-slate-900">Top 3 Topics From Bubble Graph</h3>
+        {topThreeTopics.length === 0 ? (
+          <p className="mt-2 text-sm text-slate-500">No topic words available yet.</p>
+        ) : (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {topThreeTopics.map((topic, index) => (
+              <div
+                key={`${topic.label}-${index}`}
+                className={`rounded-full border px-3 py-1 text-sm ${
+                  index === 0
+                    ? "border-amber-300 bg-amber-50 text-amber-900"
+                    : "border-slate-300 bg-slate-50 text-slate-700"
+                }`}
+              >
+                #{index + 1} {topic.label} ({topic.value})
+              </div>
+            ))}
           </div>
         )}
       </article>
