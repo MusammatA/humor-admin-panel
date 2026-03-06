@@ -27,7 +27,7 @@ export async function middleware(req: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      return NextResponse.redirect(new URL("/unauthorized", req.url));
+      return NextResponse.redirect(new URL("/login", req.url));
     }
 
     const email = String(user.email || "").toLowerCase();
@@ -37,7 +37,7 @@ export async function middleware(req: NextRequest) {
 
     return res;
   } catch (_error) {
-    return NextResponse.redirect(new URL("/unauthorized", req.url));
+    return NextResponse.redirect(new URL("/login", req.url));
   }
 }
 
