@@ -50,59 +50,49 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
 
     setRoleLoading(true);
     setRoleError(null);
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    if (authError) {
-      setRoleError(authError.message ?? "Could not resolve logged-in user.");
-      setCurrentEmail("");
-      setIsAdmin(false);
-      setAdminModeEnabled(false);
-      setRoleLoading(false);
-      return;
-    }
-    if (!authData.user) {
-      setCurrentEmail("");
-      setIsAdmin(false);
-      setAdminModeEnabled(false);
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
-      }
-      setRoleLoading(false);
-      return;
-    }
-    setCurrentEmail(authData.user.email || "");
+    try {
+      const hasAdminIntent = typeof window !== "undefined" && sessionStorage.getItem(ADMIN_MODE_INTENT_KEY) === "1";
+      const res = await fetch("/api/admin-status", { cache: "no-store" });
+      const payload = await res.json().catch(() => ({}));
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("is_superadmin")
-      .eq("id", authData.user.id)
-      .maybeSingle();
+      const authenticated = Boolean(payload?.authenticated);
+      const superadmin = Boolean(payload?.isSuperadmin);
+      const email = String(payload?.email || "");
 
-    if (profileError) {
-      setRoleError(profileError.message);
-      setIsAdmin(false);
-      setAdminModeEnabled(false);
-      setRoleLoading(false);
-      return;
-    }
-
-    const superadmin = Boolean(profile?.is_superadmin);
-    setIsAdmin(superadmin);
-    const hasAdminIntent = typeof window !== "undefined" && sessionStorage.getItem(ADMIN_MODE_INTENT_KEY) === "1";
-    if (!superadmin) {
-      setAdminModeEnabled(false);
-      // If user explicitly used Admin Login but lacks superadmin, reject that sign-in.
-      if (hasAdminIntent) {
-        await supabase.auth.signOut();
+      if (!authenticated) {
         setCurrentEmail("");
-        setRoleError("Admin login denied: this Google account is not a superadmin in Supabase.");
+        setIsAdmin(false);
+        setAdminModeEnabled(false);
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
+        }
+        setRoleLoading(false);
+        return;
       }
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
+
+      setCurrentEmail(email);
+      setIsAdmin(superadmin);
+      if (!superadmin) {
+        setAdminModeEnabled(false);
+        if (hasAdminIntent) {
+          await supabase.auth.signOut();
+          setCurrentEmail("");
+          setRoleError("Admin login denied: this Google account is not a superadmin in Supabase.");
+        }
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
+        }
+      } else {
+        setAdminModeEnabled(hasAdminIntent);
       }
-    } else if (typeof window !== "undefined") {
-      setAdminModeEnabled(hasAdminIntent);
+      setRoleLoading(false);
+    } catch (_err) {
+      setRoleError("Could not resolve admin status.");
+      setCurrentEmail("");
+      setIsAdmin(false);
+      setAdminModeEnabled(false);
+      setRoleLoading(false);
     }
-    setRoleLoading(false);
   }
 
   useEffect(() => {
