@@ -2,6 +2,9 @@ import { createClient } from "@supabase/supabase-js";
 import { AdminTabsShell } from "../../components/admin/admin-tabs-shell";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../lib/supabase-config";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 type CaptionRow = {
   caption_text?: string | null;
   text?: string | null;
@@ -26,6 +29,18 @@ function inferTopic(caption: CaptionRow): string | null {
   return found ?? null;
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function getDashboardStats() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return {
@@ -41,10 +56,29 @@ async function getDashboardStats() {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const [imagesRes, captionsRes] = await Promise.all([
-    supabase.from("images").select("*", { count: "exact", head: true }),
-    supabase.from("captions").select("caption_text, text").limit(20000),
-  ]);
+  let imagesRes: { count: number | null; error: { message?: string } | null };
+  let captionsRes: { data: CaptionRow[] | null; error: { message?: string } | null };
+
+  try {
+    const [imagesData, captionsData] = await withTimeout(
+      Promise.all([
+        supabase.from("images").select("*", { count: "exact", head: true }),
+        supabase.from("captions").select("caption_text, text").limit(6000),
+      ]),
+      12000,
+      "admin stats query",
+    );
+    imagesRes = imagesData;
+    captionsRes = captionsData as { data: CaptionRow[] | null; error: { message?: string } | null };
+  } catch (error) {
+    return {
+      totalImages: 0,
+      mostActiveUser: "Unavailable",
+      mostActiveCount: 0,
+      topTopics: [] as Array<{ topic: string; count: number }>,
+      error: error instanceof Error ? error.message : "Failed to load stats.",
+    };
+  }
 
   if (imagesRes.error || captionsRes.error) {
     return {
