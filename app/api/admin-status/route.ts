@@ -12,6 +12,18 @@ function normalizeEmail(value: unknown): string {
     .toLowerCase();
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function GET() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return NextResponse.json(
@@ -43,42 +55,58 @@ export async function GET() {
     return NextResponse.json({ authenticated: false, isSuperadmin: false, email: "" }, { status: 200 });
   }
 
-  const userId = String(user.id || "").trim();
   const userEmail = String(user.email || "").trim();
   const normalizedUserEmail = normalizeEmail(userEmail);
-
-  // Superadmin status is read-only from profiles.
-  // This endpoint never writes roles and only trusts the authenticated user's profile row.
-  const { data: profileById, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, email, is_superadmin")
-    .eq("id", userId)
-    .maybeSingle();
-
-  if (profileError) {
+  if (!normalizedUserEmail) {
     return NextResponse.json(
       {
         authenticated: true,
         isSuperadmin: false,
         email: userEmail,
-        error: profileError.message,
       },
       { status: 200 },
     );
   }
 
-  const profileId = String(profileById?.id || "").trim();
-  const normalizedProfileEmail = normalizeEmail(profileById?.email);
-  const profileEmailMatches = Boolean(normalizedUserEmail) && normalizedProfileEmail === normalizedUserEmail;
-  const profileIdMatches = Boolean(userId) && profileId === userId;
-  const strictSuperadmin = profileById?.is_superadmin === true;
-  const isSuperadmin = profileIdMatches && profileEmailMatches && strictSuperadmin;
+  // Final admin gate: signed-in Google email must match a profile with strict superadmin=true.
+  // No role writes happen here.
+  const lookupCandidates = Array.from(new Set([userEmail, normalizedUserEmail].filter(Boolean)));
+  let isSuperadmin = false;
+  let lastError = "";
+  for (const candidateEmail of lookupCandidates) {
+    try {
+      const { data: rows, error: lookupError } = await withTimeout(
+        (async () =>
+          await supabase
+            .from("profiles")
+            .select("email, is_superadmin")
+            .eq("email", candidateEmail)
+            .limit(10))(),
+        5000,
+        "admin status check",
+      );
+      if (lookupError) {
+        lastError = lookupError.message || lastError;
+        continue;
+      }
+      const allowed = Array.isArray(rows)
+        ? rows.some((row) => normalizeEmail(row?.email) === normalizedUserEmail && row?.is_superadmin === true)
+        : false;
+      if (allowed) {
+        isSuperadmin = true;
+        break;
+      }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : "Admin status check failed.";
+    }
+  }
 
   const response = NextResponse.json(
     {
       authenticated: true,
       isSuperadmin,
       email: userEmail,
+      ...(lastError && !isSuperadmin ? { error: lastError } : {}),
     },
     { status: 200 },
   );
