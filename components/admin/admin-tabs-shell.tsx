@@ -179,14 +179,22 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
           {TAB_ITEMS.map((item) => {
             const Icon = item.icon;
             const selected = activeTab === item.id;
+            const usersTabLocked = item.id === "users" && !canEdit;
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => {
+                  if (usersTabLocked) {
+                    setActiveTab("admin-login");
+                    setRoleError("View users by signing in as admin.");
+                    setSidebarOpen(false);
+                    return;
+                  }
                   setActiveTab(item.id);
                   setSidebarOpen(false);
                 }}
+                title={usersTabLocked ? "View users by signing in as admin" : undefined}
                 className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
                   selected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
@@ -220,9 +228,9 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
           </section>
         ) : null}
         {activeTab === "create" ? <CreateTab isAdmin={canEdit} /> : null}
-        {activeTab === "data" ? <DataTab stats={stats} /> : null}
+        {activeTab === "data" ? <DataTab stats={stats} canViewUserData={canEdit} /> : null}
         {activeTab === "users" ? (
-          <UserActivityManager canViewSensitive={true} canMutate={canEdit} />
+          <UserActivityManager canViewSensitive={canEdit} canMutate={canEdit} />
         ) : null}
         {activeTab === "account" ? <AccountTab /> : null}
       </div>

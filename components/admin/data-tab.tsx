@@ -15,6 +15,7 @@ type DataTabProps = {
     topTopics: Array<{ topic: string; count: number }>;
     error: string | null;
   };
+  canViewUserData?: boolean;
 };
 
 type BubbleItem = {
@@ -288,7 +289,7 @@ function packBubbles(items: BubbleItem[], width = 860, height = 620): PackedBubb
   return nodes;
 }
 
-export function DataTab({ stats }: DataTabProps) {
+export function DataTab({ stats, canViewUserData = false }: DataTabProps) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [captions, setCaptions] = useState<Row[]>([]);
   const [images, setImages] = useState<Row[]>([]);
@@ -475,6 +476,12 @@ export function DataTab({ stats }: DataTabProps) {
   }, [images, votes, profiles]);
 
   const activeLeader = topActiveUsers[0];
+  const maskedLeaderLabel = canViewUserData ? (activeLeader?.label ?? stats.mostActiveUser) : "Unavailable";
+  const maskedLeaderSubtitle = canViewUserData
+    ? activeLeader
+      ? `${activeLeader.uploads} uploads + ${activeLeader.votes} votes`
+      : `${stats.mostActiveCount.toLocaleString()} captions`
+    : "View users by signing in as admin";
 
   return (
     <section className="space-y-6">
@@ -513,12 +520,8 @@ export function DataTab({ stats }: DataTabProps) {
         />
         <StatCard
           title="Most Active User"
-          value={activeLeader?.label ?? stats.mostActiveUser}
-          subtitle={
-            activeLeader
-              ? `${activeLeader.uploads} uploads + ${activeLeader.votes} votes`
-              : `${stats.mostActiveCount.toLocaleString()} captions`
-          }
+          value={maskedLeaderLabel}
+          subtitle={maskedLeaderSubtitle}
           icon={UserRound}
         />
         <StatCard
@@ -610,7 +613,9 @@ export function DataTab({ stats }: DataTabProps) {
           Ranked by combined count of images uploaded and votes submitted.
         </p>
 
-        {topActiveUsers.length === 0 ? (
+        {!canViewUserData ? (
+          <p className="mt-3 text-sm text-slate-500">Unavailable. View users by signing in as admin.</p>
+        ) : topActiveUsers.length === 0 ? (
           <p className="mt-3 text-sm text-slate-500">No user activity found yet.</p>
         ) : (
           <div className="mt-4 space-y-2">

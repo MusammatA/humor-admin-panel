@@ -406,6 +406,17 @@ export function UserActivityManager({ canViewSensitive, canMutate }: UserActivit
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      {!canViewSensitive ? (
+        <>
+          <div className="mb-2 flex items-center gap-2">
+            <UserRound className="h-5 w-5 text-slate-700" />
+            <h2 className="text-lg font-semibold text-slate-900">User & Meme Activity Audit</h2>
+          </div>
+          <p className="text-sm text-slate-600">Unavailable. View users by signing in as admin.</p>
+        </>
+      ) : null}
+      {canViewSensitive ? (
+        <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">User & Meme Activity Audit</h2>
@@ -629,6 +640,8 @@ export function UserActivityManager({ canViewSensitive, canMutate }: UserActivit
           </div>
         </div>
       )}
+      </>
+      ) : null}
     </section>
   );
 }
