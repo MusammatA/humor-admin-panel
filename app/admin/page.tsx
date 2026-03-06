@@ -4,6 +4,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { AdminTabsShell } from "../../components/admin/admin-tabs-shell";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../lib/supabase-config";
+import { isAllowlistedAdminEmail } from "../../lib/admin-auth";
 
 const INITIAL_STATS = {
   totalImages: 0,
@@ -56,6 +57,10 @@ export default async function AdminDashboardPage() {
   }
 
   const userEmail = String(user.email || "").trim();
+  if (!isAllowlistedAdminEmail(userEmail)) {
+    redirect("/login?error=not_superadmin");
+  }
+
   let isSuperadmin = await isSuperadminByUserId(supabase, String(user.id || "").trim());
 
   // Fallback for deployments where profile reads are blocked by RLS in session context.

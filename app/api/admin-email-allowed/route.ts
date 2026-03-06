@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../../lib/supabase-config";
+import { isAllowlistedAdminEmail, normalizeEmail } from "../../../lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-function normalizeEmail(value: unknown): string {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
 
 function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -48,6 +43,10 @@ export async function GET(request: NextRequest) {
   const normalizedEmail = normalizeEmail(rawEmail);
   if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
     return NextResponse.json({ allowed: false, error: "Invalid email." }, { status: 200 });
+  }
+
+  if (!isAllowlistedAdminEmail(normalizedEmail)) {
+    return NextResponse.json({ allowed: false }, { status: 200 });
   }
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
