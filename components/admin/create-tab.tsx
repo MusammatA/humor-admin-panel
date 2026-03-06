@@ -37,8 +37,20 @@ function str(row: Row, keys: string[]) {
   for (const key of keys) {
     const value = row[key];
     if (typeof value === "string" && value.trim()) return value.trim();
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
   }
   return "";
+}
+
+function normalizeId(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function normalizeUrl(value: string) {
+  const raw = value.trim().toLowerCase();
+  if (!raw) return "";
+  const withoutQuery = raw.split("?")[0]?.split("#")[0] ?? raw;
+  return withoutQuery.replace(/^https?:\/\//, "").replace(/^www\./, "");
 }
 
 function getImageId(row: Row) {
@@ -50,11 +62,19 @@ function getImageUrl(row: Row) {
 }
 
 function getCaptionText(row: Row) {
-  return str(row, ["caption_text", "text", "content", "caption"]);
+  return str(row, ["caption_text", "text", "content", "caption", "generated_caption", "meme_text", "output"]);
 }
 
 function getCaptionId(row: Row) {
   return str(row, ["id", "caption_id"]);
+}
+
+function getCaptionImageId(row: Row) {
+  return str(row, ["image_id", "imageId", "img_id", "image_uuid"]);
+}
+
+function getCaptionImageUrl(row: Row) {
+  return str(row, ["image_url", "public_url", "cdn_url", "url"]);
 }
 
 function getTextColumn(row: Row): "caption_text" | "text" {
@@ -100,42 +120,60 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
   const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
   const [originalByImageId, setOriginalByImageId] = useState<Record<string, { image: Row; captions: Row[] }>>({});
 
+  async function fetchAllRows(table: "images" | "captions", pageSize: number, maxPages: number) {
+    if (!supabase) return [] as Row[];
+    const all: Row[] = [];
+    for (let page = 0; page < maxPages; page += 1) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
+      const { data, error: fetchError } = await supabase.from(table).select("*").range(from, to);
+      if (fetchError) {
+        throw new Error(fetchError.message);
+      }
+      const rows = (data ?? []) as Row[];
+      if (!rows.length) break;
+      all.push(...rows);
+      if (rows.length < pageSize) break;
+    }
+    return all;
+  }
+
   async function loadData() {
     if (!supabase) return;
     setLoading(true);
     setError(null);
-    const [imagesRes, captionsRes] = await Promise.all([
-      supabase.from("images").select("*").limit(5000),
-      supabase.from("captions").select("*").limit(10000),
-    ]);
-    const firstError = imagesRes.error || captionsRes.error;
-    if (firstError) {
-      setError(firstError.message);
+    try {
+      const [imageRows, captionRows] = await Promise.all([
+        fetchAllRows("images", 1000, 200),
+        fetchAllRows("captions", 2000, 200),
+      ]);
+      setImages(imageRows);
+      setCaptions(captionRows);
+
+      if (!selectedImageId && imageRows[0]) {
+        setSelectedImageId(getImageId(imageRows[0]));
+      }
+
+      setOriginalByImageId((prev) => {
+        const next = { ...prev };
+        for (const image of imageRows) {
+          const imageId = getImageId(image);
+          if (!imageId || next[imageId]) continue;
+          const imageKey = normalizeId(imageId);
+          next[imageId] = {
+            image: { ...image },
+            captions: captionRows
+              .filter((row) => normalizeId(getCaptionImageId(row)) === imageKey)
+              .map((row) => ({ ...row })),
+          };
+        }
+        return next;
+      });
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Failed to load data.");
       setLoading(false);
       return;
     }
-
-    const imageRows = (imagesRes.data ?? []) as Row[];
-    const captionRows = (captionsRes.data ?? []) as Row[];
-    setImages(imageRows);
-    setCaptions(captionRows);
-
-    if (!selectedImageId && imageRows[0]) {
-      setSelectedImageId(getImageId(imageRows[0]));
-    }
-
-    setOriginalByImageId((prev) => {
-      const next = { ...prev };
-      for (const image of imageRows) {
-        const imageId = getImageId(image);
-        if (!imageId || next[imageId]) continue;
-        next[imageId] = {
-          image: { ...image },
-          captions: captionRows.filter((row) => str(row, ["image_id"]) === imageId).map((row) => ({ ...row })),
-        };
-      }
-      return next;
-    });
 
     setLoading(false);
   }
@@ -147,10 +185,22 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
   const captionsByImage = useMemo(() => {
     const map = new Map<string, Row[]>();
     for (const caption of captions) {
-      const imageId = str(caption, ["image_id"]);
+      const imageId = getCaptionImageId(caption);
       if (!imageId) continue;
-      if (!map.has(imageId)) map.set(imageId, []);
-      map.get(imageId)!.push(caption);
+      const key = normalizeId(imageId);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(caption);
+    }
+    return map;
+  }, [captions]);
+
+  const captionsByImageUrl = useMemo(() => {
+    const map = new Map<string, Row[]>();
+    for (const caption of captions) {
+      const imageUrl = normalizeUrl(getCaptionImageUrl(caption));
+      if (!imageUrl) continue;
+      if (!map.has(imageUrl)) map.set(imageUrl, []);
+      map.get(imageUrl)!.push(caption);
     }
     return map;
   }, [captions]);
@@ -160,7 +210,10 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     [images, selectedImageId],
   );
 
-  const selectedCaptions = useMemo(() => captionsByImage.get(selectedImageId) ?? [], [captionsByImage, selectedImageId]);
+  const selectedCaptions = useMemo(
+    () => captionsByImage.get(normalizeId(selectedImageId)) ?? [],
+    [captionsByImage, selectedImageId],
+  );
 
   async function uploadImage() {
     if (!isAdmin || !supabase || !file) return;
@@ -310,7 +363,7 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     const imageRow = images.find((row) => getImageId(row) === imageId);
     if (!imageRow) return;
 
-    const relatedCaptions = captions.filter((row) => str(row, ["image_id"]) === imageId);
+    const relatedCaptions = captions.filter((row) => normalizeId(getCaptionImageId(row)) === normalizeId(imageId));
     const captionIds = relatedCaptions.map((row) => getCaptionId(row)).filter(Boolean);
 
     const { data: relatedVotes } = captionIds.length
@@ -374,7 +427,9 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
       }
     }
 
-    const currentForImage = captions.filter((row) => str(row, ["image_id"]) === selectedImageId);
+    const currentForImage = captions.filter(
+      (row) => normalizeId(getCaptionImageId(row)) === normalizeId(selectedImageId),
+    );
     const originalById = new Map(original.captions.map((row) => [getCaptionId(row), row]));
     const currentById = new Map(currentForImage.map((row) => [getCaptionId(row), row]));
 
@@ -603,7 +658,9 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
             {images.map((image) => {
               const imageId = getImageId(image);
               const imageUrl = getImageUrl(image);
-              const imageCaptions = captionsByImage.get(imageId) ?? [];
+              const byId = captionsByImage.get(normalizeId(imageId)) ?? [];
+              const byUrl = captionsByImageUrl.get(normalizeUrl(imageUrl)) ?? [];
+              const imageCaptions = byId.length ? byId : byUrl;
               const isSelected = imageId === selectedImageId;
 
               return (
@@ -623,7 +680,9 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
                   >
                     {imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={imageUrl} alt={imageId} className="h-48 w-full rounded-lg object-cover" />
+                      <div className="flex h-56 w-full items-center justify-center rounded-lg bg-white p-2">
+                        <img src={imageUrl} alt={imageId} className="h-full w-full rounded object-contain" />
+                      </div>
                     ) : (
                       <div className="flex h-48 w-full items-center justify-center rounded-lg bg-slate-200 text-xs text-slate-600">
                         No image preview
