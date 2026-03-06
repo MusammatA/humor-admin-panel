@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, PlusSquare, Search, UserRound, X, BarChart3 } from "lucide-react";
+import { BarChart3, LogIn, Menu, PlusSquare, Search, ShieldCheck, UserRound, X } from "lucide-react";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
 import { CreateTab } from "./create-tab";
@@ -20,9 +20,10 @@ type AdminTabsShellProps = {
   };
 };
 
-type AdminTab = "create" | "data" | "users" | "account";
+type AdminTab = "create" | "data" | "users" | "account" | "admin-login";
 
 const TAB_ITEMS: Array<{ id: AdminTab; label: string; icon: ComponentType<{ className?: string }> }> = [
+  { id: "admin-login", label: "Admin Login", icon: ShieldCheck },
   { id: "create", label: "Create", icon: PlusSquare },
   { id: "data", label: "Data", icon: BarChart3 },
   { id: "users", label: "Search Users", icon: Search },
@@ -31,9 +32,10 @@ const TAB_ITEMS: Array<{ id: AdminTab; label: string; icon: ComponentType<{ clas
 
 export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const [activeTab, setActiveTab] = useState<AdminTab>("create");
+  const [activeTab, setActiveTab] = useState<AdminTab>("data");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [currentEmail, setCurrentEmail] = useState("");
   const [roleLoading, setRoleLoading] = useState(true);
   const [roleError, setRoleError] = useState<string | null>(null);
 
@@ -47,11 +49,20 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
     setRoleLoading(true);
     setRoleError(null);
     const { data: authData, error: authError } = await supabase.auth.getUser();
-    if (authError || !authData.user) {
-      setRoleError(authError?.message ?? "Could not resolve logged-in user.");
+    if (authError) {
+      setRoleError(authError.message ?? "Could not resolve logged-in user.");
+      setCurrentEmail("");
+      setIsAdmin(false);
       setRoleLoading(false);
       return;
     }
+    if (!authData.user) {
+      setCurrentEmail("");
+      setIsAdmin(false);
+      setRoleLoading(false);
+      return;
+    }
+    setCurrentEmail(authData.user.email || "");
 
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
@@ -72,7 +83,35 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
 
   useEffect(() => {
     loadRole();
-  }, []);
+    if (!supabase) return;
+    const { data } = supabase.auth.onAuthStateChange(() => {
+      loadRole();
+    });
+    return () => {
+      data.subscription.unsubscribe();
+    };
+  }, [supabase]);
+
+  async function handleAdminLogin() {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+    if (error) {
+      setRoleError(error.message);
+    }
+  }
+
+  async function handleLogout() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setIsAdmin(false);
+    setCurrentEmail("");
+    setRoleError(null);
+  }
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -100,10 +139,16 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
         }`}
       >
         <h2 className="text-lg font-semibold text-slate-900">Dashboard Tabs</h2>
-        <p className="mt-1 text-xs text-slate-500">Modern control panel for memes, analytics, and users.</p>
+        <p className="mt-1 text-xs text-slate-500">Read-only for everyone. Editing is superadmin-only.</p>
 
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          {roleLoading ? "Checking permissions..." : isAdmin ? "Role: Admin" : "Role: Columbia User"}
+          {roleLoading
+            ? "Checking permissions..."
+            : isAdmin
+            ? `Role: Superadmin (${currentEmail || "signed in"})`
+            : currentEmail
+            ? `Role: Viewer (${currentEmail})`
+            : "Role: Guest Viewer"}
         </div>
         {roleError ? <p className="mt-2 text-xs text-rose-600">{roleError}</p> : null}
 
@@ -132,6 +177,39 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       </aside>
 
       <div className="mx-auto max-w-7xl p-6 pt-20 md:p-10 md:pt-20">
+        {activeTab === "admin-login" ? (
+          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <h1 className="text-2xl font-semibold text-slate-900">Admin Access</h1>
+            <p className="mt-2 text-sm text-slate-600">
+              Anyone can view this dashboard. Editing actions require a Google sign-in account that is marked
+              <code> is_superadmin = true </code> in Supabase profiles.
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleAdminLogin}
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
+              >
+                <LogIn className="h-4 w-4" />
+                Admin Login (Google)
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Log Out
+              </button>
+              <button
+                type="button"
+                onClick={loadRole}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Refresh Role
+              </button>
+            </div>
+          </section>
+        ) : null}
         {activeTab === "create" ? <CreateTab isAdmin={isAdmin} /> : null}
         {activeTab === "data" ? <DataTab stats={stats} /> : null}
         {activeTab === "users" ? (
