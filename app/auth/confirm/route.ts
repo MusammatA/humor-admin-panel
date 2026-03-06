@@ -22,27 +22,19 @@ function readAdminAllowlist(): Set<string> {
 
 function isEmailInAllowlist(email: string): boolean {
   const allowlist = readAdminAllowlist();
-  if (!allowlist.size) return true;
+  if (!allowlist.size) return false;
   return allowlist.has(normalizeEmail(email));
 }
 
-async function isSuperadminByEmail(client: any, userEmail: string): Promise<boolean> {
-  const normalized = normalizeEmail(userEmail);
-  if (!normalized) return false;
-  const candidates = Array.from(new Set([userEmail, normalized].filter(Boolean)));
-  for (const candidate of candidates) {
-    const { data, error } = await client
-      .from("profiles")
-      .select("email, is_superadmin")
-      .eq("email", candidate)
-      .limit(10);
-    if (error || !Array.isArray(data)) continue;
-    const match = data.some((row: { email?: unknown; is_superadmin?: unknown }) => {
-      return normalizeEmail(row?.email) === normalized && row?.is_superadmin === true;
-    });
-    if (match) return true;
-  }
-  return false;
+async function isSuperadminByUserId(client: any, userId: string): Promise<boolean> {
+  if (!userId) return false;
+  const { data, error } = await client
+    .from("profiles")
+    .select("id, is_superadmin")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) return false;
+  return Boolean(data && data.is_superadmin === true && String(data.id || "").trim() === userId);
 }
 
 export async function GET(request: Request) {
@@ -92,13 +84,13 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}/login?error=not_superadmin`);
   }
 
-  let isSuperadmin = await isSuperadminByEmail(supabase, userEmail);
+  let isSuperadmin = await isSuperadminByUserId(supabase, String(user.id || "").trim());
 
   if (!isSuperadmin && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     const serviceClient = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    isSuperadmin = await isSuperadminByEmail(serviceClient, userEmail);
+    isSuperadmin = await isSuperadminByUserId(serviceClient, String(user.id || "").trim());
   }
 
   if (!isSuperadmin) {

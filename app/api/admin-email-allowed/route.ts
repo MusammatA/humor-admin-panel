@@ -26,26 +26,32 @@ function readAdminAllowlist(): Set<string> {
 
 function isEmailInAllowlist(email: string): boolean {
   const allowlist = readAdminAllowlist();
-  if (!allowlist.size) return true;
+  if (!allowlist.size) return false;
   return allowlist.has(normalizeEmail(email));
 }
 
-function hasSuperadminEmailMatch(
-  rows: Array<{ email?: unknown; is_superadmin?: unknown }>,
-  normalizedEmail: string,
-): boolean {
-  return rows.some((row) => normalizeEmail(row?.email) === normalizedEmail && row?.is_superadmin === true);
+function hasSuperadminUserIdMatch(rows: Array<{ id?: unknown; is_superadmin?: unknown }>, expectedId: string): boolean {
+  return rows.some((row) => String(row?.id || "").trim() === expectedId && row?.is_superadmin === true);
 }
 
 async function querySuperadminByEmail(client: any, rawEmail: string, normalizedEmail: string): Promise<boolean> {
   const candidates = Array.from(new Set([rawEmail, normalizedEmail].filter(Boolean)));
   for (const candidate of candidates) {
+    const { data: authData, error: authError } = await client.auth.admin.listUsers({
+      page: 1,
+      perPage: 1,
+      email: candidate,
+    });
+    if (authError) continue;
+    const userId = String(authData?.users?.[0]?.id || "").trim();
+    if (!userId) continue;
+
     const { data, error } = await client
       .from("profiles")
-      .select("email, is_superadmin")
-      .eq("email", candidate)
-      .limit(10);
-    if (!error && Array.isArray(data) && hasSuperadminEmailMatch(data, normalizedEmail)) {
+      .select("id, is_superadmin")
+      .eq("id", userId)
+      .limit(1);
+    if (!error && Array.isArray(data) && hasSuperadminUserIdMatch(data, userId)) {
       return true;
     }
   }
@@ -66,23 +72,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!isEmailInAllowlist(normalizedEmail)) {
+  const hasAllowlist = readAdminAllowlist().size > 0;
+  if (hasAllowlist && !isEmailInAllowlist(normalizedEmail)) {
     return NextResponse.json({ allowed: false }, { status: 200 });
   }
 
   let allowed = false;
   let queryErrorMessage = "";
-
-  try {
-    const sessionlessClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    allowed = await querySuperadminByEmail(sessionlessClient, rawEmail, normalizedEmail);
-  } catch (error) {
-    queryErrorMessage = error instanceof Error ? error.message : "Admin check failed.";
-  }
-
-  if (!allowed && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
       const serviceClient = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
         auth: { persistSession: false, autoRefreshToken: false },
@@ -91,6 +88,19 @@ export async function GET(request: NextRequest) {
     } catch (error) {
       queryErrorMessage = error instanceof Error ? error.message : "Admin check failed.";
     }
+  } else if (hasAllowlist) {
+    // Allowlist-only mode: rely on fixed admin emails when service-role verification is unavailable.
+    allowed = true;
+  } else {
+    return NextResponse.json(
+      {
+        allowed: false,
+        indeterminate: true,
+        error:
+          "Server is missing ADMIN_ALLOWED_EMAILS and SUPABASE_SERVICE_ROLE_KEY. Configure at least one to verify admin emails.",
+      },
+      { status: 200 },
+    );
   }
 
   if (!allowed && queryErrorMessage) {
