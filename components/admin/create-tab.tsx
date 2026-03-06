@@ -11,6 +11,13 @@ type CreateTabProps = {
   bucketName?: string;
 };
 
+type CatalogMeme = {
+  key: string;
+  imageId: string;
+  imageUrl: string;
+  captions: Row[];
+};
+
 type UndoAction =
   | {
       type: "delete-meme";
@@ -115,7 +122,7 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
   const [file, setFile] = useState<File | null>(null);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
   const [newCaption, setNewCaption] = useState("");
-  const [selectedImageId, setSelectedImageId] = useState("");
+  const [selectedMemeKey, setSelectedMemeKey] = useState("");
   const [draftByCaptionId, setDraftByCaptionId] = useState<Record<string, string>>({});
   const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
   const [originalByImageId, setOriginalByImageId] = useState<Record<string, { image: Row; captions: Row[] }>>({});
@@ -150,10 +157,6 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
       setImages(imageRows);
       setCaptions(captionRows);
 
-      if (!selectedImageId && imageRows[0]) {
-        setSelectedImageId(getImageId(imageRows[0]));
-      }
-
       setOriginalByImageId((prev) => {
         const next = { ...prev };
         for (const image of imageRows) {
@@ -182,37 +185,62 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     loadData();
   }, []);
 
-  const captionsByImage = useMemo(() => {
-    const map = new Map<string, Row[]>();
-    for (const caption of captions) {
-      const imageId = getCaptionImageId(caption);
-      if (!imageId) continue;
-      const key = normalizeId(imageId);
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(caption);
+  const catalogMemes = useMemo(() => {
+    const imageById = new Map<string, Row>();
+    const imageByUrl = new Map<string, Row>();
+    for (const image of images) {
+      const id = getImageId(image);
+      const url = getImageUrl(image);
+      if (id) imageById.set(normalizeId(id), image);
+      if (url) imageByUrl.set(normalizeUrl(url), image);
     }
-    return map;
-  }, [captions]);
 
-  const captionsByImageUrl = useMemo(() => {
-    const map = new Map<string, Row[]>();
+    const grouped = new Map<string, CatalogMeme>();
     for (const caption of captions) {
-      const imageUrl = normalizeUrl(getCaptionImageUrl(caption));
-      if (!imageUrl) continue;
-      if (!map.has(imageUrl)) map.set(imageUrl, []);
-      map.get(imageUrl)!.push(caption);
-    }
-    return map;
-  }, [captions]);
+      const text = getCaptionText(caption);
+      if (!text) continue;
 
-  const selectedImage = useMemo(
-    () => images.find((row) => getImageId(row) === selectedImageId) ?? null,
-    [images, selectedImageId],
+      const captionImageId = getCaptionImageId(caption);
+      const captionImageUrl = getCaptionImageUrl(caption);
+      const byIdImage = captionImageId ? imageById.get(normalizeId(captionImageId)) : undefined;
+      const byUrlImage = captionImageUrl ? imageByUrl.get(normalizeUrl(captionImageUrl)) : undefined;
+      const linkedImage = byIdImage ?? byUrlImage;
+
+      const imageId = captionImageId || getImageId(linkedImage ?? {}) || "";
+      const imageUrl = getImageUrl(linkedImage ?? {}) || captionImageUrl || "";
+      const key = imageId ? `id:${normalizeId(imageId)}` : `url:${normalizeUrl(imageUrl)}`;
+      if (!key || key.endsWith(":")) continue;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, { key, imageId, imageUrl, captions: [] });
+      }
+      const item = grouped.get(key)!;
+      if (!item.imageId && imageId) item.imageId = imageId;
+      if (!item.imageUrl && imageUrl) item.imageUrl = imageUrl;
+      item.captions.push(caption);
+    }
+
+    return Array.from(grouped.values()).sort((a, b) => b.captions.length - a.captions.length);
+  }, [captions, images]);
+
+  useEffect(() => {
+    if (!selectedMemeKey && catalogMemes.length) {
+      setSelectedMemeKey(catalogMemes[0].key);
+      return;
+    }
+    if (selectedMemeKey && !catalogMemes.some((meme) => meme.key === selectedMemeKey)) {
+      setSelectedMemeKey(catalogMemes[0]?.key ?? "");
+    }
+  }, [catalogMemes, selectedMemeKey]);
+
+  const selectedMeme = useMemo(
+    () => catalogMemes.find((meme) => meme.key === selectedMemeKey) ?? null,
+    [catalogMemes, selectedMemeKey],
   );
-
-  const selectedCaptions = useMemo(
-    () => captionsByImage.get(normalizeId(selectedImageId)) ?? [],
-    [captionsByImage, selectedImageId],
+  const selectedImageId = selectedMeme?.imageId ?? "";
+  const selectedImage = useMemo(
+    () => (selectedImageId ? images.find((row) => normalizeId(getImageId(row)) === normalizeId(selectedImageId)) ?? null : null),
+    [images, selectedImageId],
   );
 
   async function uploadImage() {
@@ -401,7 +429,7 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     ]);
 
     if (selectedImageId === imageId) {
-      setSelectedImageId("");
+      setSelectedMemeKey("");
     }
 
     setMessage("Meme deleted. You can undo this action.");
@@ -581,7 +609,7 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
               Captions are editable free-form series of words. Select an image card below to target that meme.
             </p>
             <p className="mt-2 rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700">
-              Selected image ID: {selectedImageId || "None"}
+              Selected image ID: {selectedImageId || "None (URL-only caption group)"}
             </p>
             <textarea
               value={newCaption}
@@ -655,17 +683,15 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
           <p className="text-sm text-slate-500">Loading memes...</p>
         ) : (
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {images.map((image) => {
-              const imageId = getImageId(image);
-              const imageUrl = getImageUrl(image);
-              const byId = captionsByImage.get(normalizeId(imageId)) ?? [];
-              const byUrl = captionsByImageUrl.get(normalizeUrl(imageUrl)) ?? [];
-              const imageCaptions = byId.length ? byId : byUrl;
-              const isSelected = imageId === selectedImageId;
+            {catalogMemes.map((meme) => {
+              const imageId = meme.imageId || "No image_id";
+              const imageUrl = meme.imageUrl;
+              const imageCaptions = meme.captions;
+              const isSelected = meme.key === selectedMemeKey;
 
               return (
                 <article
-                  key={imageId}
+                  key={meme.key}
                   className={`rounded-xl border p-3 ${
                     isSelected
                       ? "border-slate-900 bg-slate-100 shadow-sm"
@@ -674,9 +700,9 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
                 >
                   <button
                     type="button"
-                    onClick={() => setSelectedImageId(imageId)}
+                    onClick={() => setSelectedMemeKey(meme.key)}
                     className="w-full text-left"
-                    aria-label={`Select meme ${imageId}`}
+                    aria-label={`Select meme ${meme.key}`}
                   >
                     {imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -749,7 +775,8 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
                   {isAdmin ? (
                     <button
                       type="button"
-                      onClick={() => deleteMeme(imageId)}
+                      onClick={() => deleteMeme(meme.imageId)}
+                      disabled={!meme.imageId}
                       className="mt-3 inline-flex items-center gap-1 rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
