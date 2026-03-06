@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, Trash2, UploadCloud } from "lucide-react";
+import { Pencil, RotateCcw, Trash2, Undo2, UploadCloud } from "lucide-react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
 
 type Row = Record<string, unknown>;
@@ -10,6 +10,28 @@ type CreateTabProps = {
   isAdmin: boolean;
   bucketName?: string;
 };
+
+type UndoAction =
+  | {
+      type: "delete-meme";
+      image: Row;
+      captions: Row[];
+      votes: Row[];
+    }
+  | {
+      type: "caption-update";
+      captionId: string;
+      previousText: string;
+    }
+  | {
+      type: "caption-create";
+      captionId: string;
+    }
+  | {
+      type: "image-replace";
+      imageId: string;
+      previousUrl: string;
+    };
 
 function str(row: Row, keys: string[]) {
   for (const key of keys) {
@@ -35,6 +57,10 @@ function getCaptionId(row: Row) {
   return str(row, ["id", "caption_id"]);
 }
 
+function getTextColumn(row: Row): "caption_text" | "text" {
+  return Object.prototype.hasOwnProperty.call(row, "caption_text") ? "caption_text" : "text";
+}
+
 function toImageInsertPayload(publicUrl: string, userId: string) {
   return [
     { image_url: publicUrl, user_id: userId },
@@ -54,6 +80,10 @@ function toCaptionInsertPayload(imageId: string, text: string, userId: string) {
   ];
 }
 
+function toImageUrlUpdatePayloads(url: string) {
+  return [{ image_url: url }, { public_url: url }, { cdn_url: url }, { url }];
+}
+
 export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [images, setImages] = useState<Row[]>([]);
@@ -63,8 +93,12 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
   const [message, setMessage] = useState<string | null>(null);
 
   const [file, setFile] = useState<File | null>(null);
+  const [replaceFile, setReplaceFile] = useState<File | null>(null);
   const [newCaption, setNewCaption] = useState("");
-  const [targetImageId, setTargetImageId] = useState("");
+  const [selectedImageId, setSelectedImageId] = useState("");
+  const [draftByCaptionId, setDraftByCaptionId] = useState<Record<string, string>>({});
+  const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
+  const [originalByImageId, setOriginalByImageId] = useState<Record<string, { image: Row; captions: Row[] }>>({});
 
   async function loadData() {
     if (!supabase) return;
@@ -80,12 +114,29 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
       setLoading(false);
       return;
     }
+
     const imageRows = (imagesRes.data ?? []) as Row[];
+    const captionRows = (captionsRes.data ?? []) as Row[];
     setImages(imageRows);
-    setCaptions((captionsRes.data ?? []) as Row[]);
-    if (!targetImageId && imageRows[0]) {
-      setTargetImageId(getImageId(imageRows[0]));
+    setCaptions(captionRows);
+
+    if (!selectedImageId && imageRows[0]) {
+      setSelectedImageId(getImageId(imageRows[0]));
     }
+
+    setOriginalByImageId((prev) => {
+      const next = { ...prev };
+      for (const image of imageRows) {
+        const imageId = getImageId(image);
+        if (!imageId || next[imageId]) continue;
+        next[imageId] = {
+          image: { ...image },
+          captions: captionRows.filter((row) => str(row, ["image_id"]) === imageId).map((row) => ({ ...row })),
+        };
+      }
+      return next;
+    });
+
     setLoading(false);
   }
 
@@ -103,6 +154,13 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     }
     return map;
   }, [captions]);
+
+  const selectedImage = useMemo(
+    () => images.find((row) => getImageId(row) === selectedImageId) ?? null,
+    [images, selectedImageId],
+  );
+
+  const selectedCaptions = useMemo(() => captionsByImage.get(selectedImageId) ?? [], [captionsByImage, selectedImageId]);
 
   async function uploadImage() {
     if (!isAdmin || !supabase || !file) return;
@@ -146,71 +204,82 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
   }
 
   async function createCaption() {
-    if (!isAdmin || !supabase || !targetImageId || !newCaption.trim()) return;
+    if (!isAdmin || !supabase || !selectedImageId || !newCaption.trim()) return;
     setError(null);
     setMessage(null);
+
     const { data: authData } = await supabase.auth.getUser();
     const userId = authData.user?.id || "";
-    let inserted = false;
-    for (const payload of toCaptionInsertPayload(targetImageId, newCaption.trim(), userId)) {
-      const { error: insertError } = await supabase.from("captions").insert(payload);
+    for (const payload of toCaptionInsertPayload(selectedImageId, newCaption.trim(), userId)) {
+      const { data, error: insertError } = await supabase.from("captions").insert(payload).select("*").maybeSingle();
       if (!insertError) {
-        inserted = true;
-        break;
-      }
-    }
-    if (!inserted) {
-      setError("Failed to create caption row with available columns.");
-      return;
-    }
-    setNewCaption("");
-    setMessage("Caption created.");
-    await loadData();
-  }
-
-  async function deleteMeme(imageId: string) {
-    if (!isAdmin || !supabase) return;
-    if (!window.confirm("Delete this meme image and related captions/votes?")) return;
-    const captionIds = captions
-      .filter((row) => str(row, ["image_id"]) === imageId)
-      .map((row) => getCaptionId(row))
-      .filter(Boolean);
-
-    if (captionIds.length) {
-      const { error: voteDeleteError } = await supabase
-        .from("caption_votes")
-        .delete()
-        .in("caption_id", captionIds);
-      if (voteDeleteError) {
-        setError(voteDeleteError.message);
+        const createdCaptionId = data ? getCaptionId(data as Row) : "";
+        if (createdCaptionId) {
+          setUndoStack((prev) => [...prev, { type: "caption-create", captionId: createdCaptionId }]);
+        }
+        setNewCaption("");
+        setMessage("Caption created.");
+        await loadData();
         return;
       }
     }
-    const { error: captionDeleteError } = await supabase.from("captions").delete().eq("image_id", imageId);
-    if (captionDeleteError) {
-      setError(captionDeleteError.message);
-      return;
-    }
-    const { error: imageDeleteError } = await supabase.from("images").delete().eq("id", imageId);
-    if (imageDeleteError) {
-      setError(imageDeleteError.message);
-      return;
-    }
-    setMessage("Meme deleted.");
-    await loadData();
+
+    setError("Failed to create caption row with available columns.");
   }
 
-  async function editCaption(caption: Row) {
+  async function replaceImage() {
+    if (!isAdmin || !supabase || !replaceFile || !selectedImageId || !selectedImage) return;
+    setError(null);
+    setMessage(null);
+
+    const { data: authData } = await supabase.auth.getUser();
+    const userId = authData.user?.id;
+    if (!userId) {
+      setError("Login session missing. Refresh and sign in again.");
+      return;
+    }
+
+    const previousUrl = getImageUrl(selectedImage);
+    const filePath = `${userId}/${Date.now()}-${replaceFile.name.replace(/\s+/g, "-")}`;
+    const { error: uploadError } = await supabase.storage.from(bucketName).upload(filePath, replaceFile, {
+      upsert: true,
+    });
+    if (uploadError) {
+      setError(uploadError.message);
+      return;
+    }
+
+    const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+    const nextUrl = urlData.publicUrl;
+
+    for (const payload of toImageUrlUpdatePayloads(nextUrl)) {
+      const { error: updateError } = await supabase.from("images").update(payload).eq("id", selectedImageId);
+      if (!updateError) {
+        setUndoStack((prev) => [...prev, { type: "image-replace", imageId: selectedImageId, previousUrl }]);
+        setReplaceFile(null);
+        setMessage("Image replaced.");
+        await loadData();
+        return;
+      }
+    }
+
+    setError("Failed to replace image URL in images table.");
+  }
+
+  async function updateCaption(caption: Row) {
     if (!isAdmin || !supabase) return;
-    const current = getCaptionText(caption);
-    const next = window.prompt("Edit caption text", current);
-    if (next == null || next.trim() === current) return;
     const captionId = getCaptionId(caption);
     if (!captionId) return;
-    const payloads = [{ caption_text: next.trim() }, { text: next.trim() }];
+
+    const current = getCaptionText(caption);
+    const next = (draftByCaptionId[captionId] ?? current).trim();
+    if (!next || next === current) return;
+
+    const payloads = [{ caption_text: next }, { text: next }];
     for (const payload of payloads) {
       const { error: updateError } = await supabase.from("captions").update(payload).eq("id", captionId);
       if (!updateError) {
+        setUndoStack((prev) => [...prev, { type: "caption-update", captionId, previousText: current }]);
         setMessage("Caption updated.");
         await loadData();
         return;
@@ -219,14 +288,209 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     setError("Failed to update caption.");
   }
 
+  async function deleteCaption(caption: Row) {
+    if (!isAdmin || !supabase) return;
+    const captionId = getCaptionId(caption);
+    if (!captionId) return;
+    const { error: deleteError } = await supabase.from("captions").delete().eq("id", captionId);
+    if (deleteError) {
+      setError(deleteError.message);
+      return;
+    }
+    setMessage("Caption deleted.");
+    await loadData();
+  }
+
+  async function deleteMeme(imageId: string) {
+    if (!isAdmin || !supabase) return;
+    if (!window.confirm("Delete this meme image and related captions/votes?")) return;
+    setError(null);
+    setMessage(null);
+
+    const imageRow = images.find((row) => getImageId(row) === imageId);
+    if (!imageRow) return;
+
+    const relatedCaptions = captions.filter((row) => str(row, ["image_id"]) === imageId);
+    const captionIds = relatedCaptions.map((row) => getCaptionId(row)).filter(Boolean);
+
+    const { data: relatedVotes } = captionIds.length
+      ? await supabase.from("caption_votes").select("*").in("caption_id", captionIds)
+      : { data: [] as Row[] };
+
+    if (captionIds.length) {
+      const { error: voteDeleteError } = await supabase.from("caption_votes").delete().in("caption_id", captionIds);
+      if (voteDeleteError) {
+        setError(voteDeleteError.message);
+        return;
+      }
+    }
+
+    const { error: captionDeleteError } = await supabase.from("captions").delete().eq("image_id", imageId);
+    if (captionDeleteError) {
+      setError(captionDeleteError.message);
+      return;
+    }
+
+    const { error: imageDeleteError } = await supabase.from("images").delete().eq("id", imageId);
+    if (imageDeleteError) {
+      setError(imageDeleteError.message);
+      return;
+    }
+
+    setUndoStack((prev) => [
+      ...prev,
+      {
+        type: "delete-meme",
+        image: { ...imageRow },
+        captions: relatedCaptions.map((row) => ({ ...row })),
+        votes: ((relatedVotes ?? []) as Row[]).map((row) => ({ ...row })),
+      },
+    ]);
+
+    if (selectedImageId === imageId) {
+      setSelectedImageId("");
+    }
+
+    setMessage("Meme deleted. You can undo this action.");
+    await loadData();
+  }
+
+  async function resetSelectedMeme() {
+    if (!isAdmin || !supabase || !selectedImageId) return;
+    const original = originalByImageId[selectedImageId];
+    if (!original) {
+      setError("No original snapshot available for this meme yet.");
+      return;
+    }
+
+    setError(null);
+    setMessage(null);
+
+    const originalUrl = getImageUrl(original.image);
+    if (originalUrl) {
+      for (const payload of toImageUrlUpdatePayloads(originalUrl)) {
+        const { error: updateError } = await supabase.from("images").update(payload).eq("id", selectedImageId);
+        if (!updateError) break;
+      }
+    }
+
+    const currentForImage = captions.filter((row) => str(row, ["image_id"]) === selectedImageId);
+    const originalById = new Map(original.captions.map((row) => [getCaptionId(row), row]));
+    const currentById = new Map(currentForImage.map((row) => [getCaptionId(row), row]));
+
+    const toDelete = currentForImage.filter((row) => {
+      const id = getCaptionId(row);
+      return Boolean(id) && !originalById.has(id);
+    });
+
+    if (toDelete.length) {
+      const ids = toDelete.map((row) => getCaptionId(row)).filter(Boolean);
+      await supabase.from("captions").delete().in("id", ids);
+    }
+
+    for (const [originalId, originalCaption] of originalById.entries()) {
+      const text = getCaptionText(originalCaption);
+      if (!text) continue;
+
+      if (currentById.has(originalId)) {
+        const textColumn = getTextColumn(originalCaption);
+        await supabase.from("captions").update({ [textColumn]: text }).eq("id", originalId);
+      } else {
+        const payloads = [{ image_id: selectedImageId, caption_text: text }, { image_id: selectedImageId, text }];
+        for (const payload of payloads) {
+          const { error: insertError } = await supabase.from("captions").insert(payload);
+          if (!insertError) break;
+        }
+      }
+    }
+
+    setMessage("Selected meme reset to original image and captions.");
+    await loadData();
+  }
+
+  async function undoLastAction() {
+    if (!isAdmin || !supabase || undoStack.length === 0) return;
+    const action = undoStack[undoStack.length - 1];
+    setError(null);
+    setMessage(null);
+
+    if (action.type === "caption-create") {
+      const { error: deleteError } = await supabase.from("captions").delete().eq("id", action.captionId);
+      if (deleteError) {
+        setError(deleteError.message);
+        return;
+      }
+      setUndoStack((prev) => prev.slice(0, -1));
+      setMessage("Undid caption creation.");
+      await loadData();
+      return;
+    }
+
+    if (action.type === "caption-update") {
+      for (const payload of [{ caption_text: action.previousText }, { text: action.previousText }]) {
+        const { error: updateError } = await supabase.from("captions").update(payload).eq("id", action.captionId);
+        if (!updateError) {
+          setUndoStack((prev) => prev.slice(0, -1));
+          setMessage("Undid caption update.");
+          await loadData();
+          return;
+        }
+      }
+      setError("Failed to undo caption update.");
+      return;
+    }
+
+    if (action.type === "image-replace") {
+      for (const payload of toImageUrlUpdatePayloads(action.previousUrl)) {
+        const { error: updateError } = await supabase.from("images").update(payload).eq("id", action.imageId);
+        if (!updateError) {
+          setUndoStack((prev) => prev.slice(0, -1));
+          setMessage("Undid image replacement.");
+          await loadData();
+          return;
+        }
+      }
+      setError("Failed to undo image replacement.");
+      return;
+    }
+
+    if (action.type === "delete-meme") {
+      const { error: imageInsertError } = await supabase.from("images").insert(action.image);
+      if (imageInsertError) {
+        setError(imageInsertError.message);
+        return;
+      }
+
+      if (action.captions.length) {
+        const { error: captionsInsertError } = await supabase.from("captions").insert(action.captions);
+        if (captionsInsertError) {
+          setError(captionsInsertError.message);
+          return;
+        }
+      }
+
+      if (action.votes.length) {
+        const { error: votesInsertError } = await supabase.from("caption_votes").insert(action.votes);
+        if (votesInsertError) {
+          setError(votesInsertError.message);
+          return;
+        }
+      }
+
+      setUndoStack((prev) => prev.slice(0, -1));
+      setMessage("Undid meme deletion.");
+      await loadData();
+    }
+  }
+
   return (
     <section className="space-y-6">
       <header>
         <h1 className="text-3xl font-semibold text-slate-900">Create</h1>
         <p className="mt-2 text-sm text-slate-600">
           {isAdmin
-            ? "Upload pictures, add captions, and manage existing memes."
-            : "View meme catalog. Admin privileges are required for edits and deletes."}
+            ? "Click an image to edit its caption words, replace image media, delete, undo, or reset to original."
+            : "Browse the meme catalog and read caption text. Admin privileges are required for changes."}
         </p>
       </header>
 
@@ -257,35 +521,66 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
           </article>
 
           <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-lg font-semibold text-slate-900">Create Caption</h2>
-            <select
-              value={targetImageId}
-              onChange={(event) => setTargetImageId(event.target.value)}
-              className="mt-3 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-            >
-              {images.map((img) => {
-                const id = getImageId(img);
-                return (
-                  <option key={id} value={id}>
-                    {id || "Unknown image id"}
-                  </option>
-                );
-              })}
-            </select>
+            <h2 className="text-lg font-semibold text-slate-900">Selected Meme Editor</h2>
+            <p className="mt-2 text-xs text-slate-500">
+              Captions are editable free-form series of words. Select an image card below to target that meme.
+            </p>
+            <p className="mt-2 rounded-md bg-slate-100 px-2 py-1 font-mono text-xs text-slate-700">
+              Selected image ID: {selectedImageId || "None"}
+            </p>
             <textarea
               value={newCaption}
               onChange={(event) => setNewCaption(event.target.value)}
-              placeholder="Write caption text"
+              placeholder="Write a new caption for the selected meme"
               className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm"
             />
-            <button
-              type="button"
-              onClick={createCaption}
-              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              <Pencil className="h-4 w-4" />
-              Create Caption
-            </button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={createCaption}
+                disabled={!selectedImageId}
+                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                <Pencil className="h-4 w-4" />
+                Add Caption
+              </button>
+              <button
+                type="button"
+                onClick={undoLastAction}
+                disabled={undoStack.length === 0}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Undo2 className="h-4 w-4" />
+                Undo Last Action
+              </button>
+              <button
+                type="button"
+                onClick={resetSelectedMeme}
+                disabled={!selectedImageId}
+                className="inline-flex items-center gap-2 rounded-lg border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Reset Selected Meme
+              </button>
+            </div>
+
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <label className="text-sm font-medium text-slate-800">Replace Selected Image</label>
+              <input
+                type="file"
+                className="mt-2 w-full text-sm"
+                onChange={(event) => setReplaceFile(event.target.files?.[0] ?? null)}
+              />
+              <button
+                type="button"
+                onClick={replaceImage}
+                disabled={!selectedImageId || !replaceFile}
+                className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <UploadCloud className="h-4 w-4" />
+                Replace Image
+              </button>
+            </div>
           </article>
         </section>
       ) : null}
@@ -309,33 +604,89 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
               const imageId = getImageId(image);
               const imageUrl = getImageUrl(image);
               const imageCaptions = captionsByImage.get(imageId) ?? [];
+              const isSelected = imageId === selectedImageId;
+
               return (
-                <article key={imageId} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  {imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={imageUrl} alt={imageId} className="h-48 w-full rounded-lg object-cover" />
-                  ) : (
-                    <div className="flex h-48 w-full items-center justify-center rounded-lg bg-slate-200 text-xs text-slate-600">
-                      No image preview
-                    </div>
-                  )}
-                  <p className="mt-2 truncate font-mono text-xs text-slate-600">{imageId}</p>
+                <article
+                  key={imageId}
+                  className={`rounded-xl border p-3 ${
+                    isSelected
+                      ? "border-slate-900 bg-slate-100 shadow-sm"
+                      : "border-slate-200 bg-slate-50 hover:border-slate-400"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSelectedImageId(imageId)}
+                    className="w-full text-left"
+                    aria-label={`Select meme ${imageId}`}
+                  >
+                    {imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imageUrl} alt={imageId} className="h-48 w-full rounded-lg object-cover" />
+                    ) : (
+                      <div className="flex h-48 w-full items-center justify-center rounded-lg bg-slate-200 text-xs text-slate-600">
+                        No image preview
+                      </div>
+                    )}
+                    <p className="mt-2 truncate font-mono text-xs text-slate-700">{imageId}</p>
+                    {isSelected ? <p className="mt-1 text-xs font-semibold text-slate-900">Selected for editing</p> : null}
+                  </button>
+
                   <ul className="mt-2 space-y-1">
-                    {imageCaptions.slice(0, 4).map((caption) => (
-                      <li key={getCaptionId(caption)} className="rounded bg-white px-2 py-1 text-xs text-slate-700">
-                        {getCaptionText(caption)}
-                        {isAdmin ? (
-                          <button
-                            type="button"
-                            onClick={() => editCaption(caption)}
-                            className="ml-2 text-slate-500 underline"
-                          >
-                            edit
-                          </button>
-                        ) : null}
-                      </li>
-                    ))}
+                    {imageCaptions.length === 0 ? (
+                      <li className="rounded bg-white px-2 py-1 text-xs text-slate-500">No captions yet.</li>
+                    ) : (
+                      imageCaptions.map((caption) => {
+                        const captionId = getCaptionId(caption);
+                        const currentText = getCaptionText(caption);
+                        const draft = draftByCaptionId[captionId] ?? currentText;
+                        return (
+                          <li key={captionId} className="rounded bg-white px-2 py-2 text-xs text-slate-700">
+                            {isAdmin ? (
+                              <>
+                                <textarea
+                                  value={draft}
+                                  onChange={(event) =>
+                                    setDraftByCaptionId((prev) => ({ ...prev, [captionId]: event.target.value }))
+                                  }
+                                  className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                                />
+                                <div className="mt-1 flex gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => updateCaption(caption)}
+                                    className="rounded border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                                  >
+                                    Save Caption
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setDraftByCaptionId((prev) => ({ ...prev, [captionId]: currentText }))
+                                    }
+                                    className="rounded border border-amber-300 px-2 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-50"
+                                  >
+                                    Revert Draft
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteCaption(caption)}
+                                    className="rounded border border-rose-300 px-2 py-1 text-[11px] font-medium text-rose-700 hover:bg-rose-50"
+                                  >
+                                    Delete Caption
+                                  </button>
+                                </div>
+                              </>
+                            ) : (
+                              <span>{currentText}</span>
+                            )}
+                          </li>
+                        );
+                      })
+                    )}
                   </ul>
+
                   {isAdmin ? (
                     <button
                       type="button"
