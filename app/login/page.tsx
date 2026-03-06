@@ -4,13 +4,22 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
 
+async function fetchAdminStatusWithTimeout(ms: number) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  try {
+    return await fetch("/api/admin-status", { cache: "no-store", signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [checkingSession, setCheckingSession] = useState(true);
   const [signinError, setSigninError] = useState("");
-  const [adminEmail, setAdminEmail] = useState("");
-  const [checkingAdminEmail, setCheckingAdminEmail] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -19,15 +28,33 @@ export default function LoginPage() {
         if (!cancelled) setCheckingSession(false);
         return;
       }
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (cancelled) return;
-      if (session) {
-        router.replace("/admin");
-        return;
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (cancelled) return;
+        if (!session) {
+          setCheckingSession(false);
+          return;
+        }
+
+        const res = await fetchAdminStatusWithTimeout(8000);
+        const payload = await res.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (payload?.isSuperadmin === true || payload?.isSuperadmin === 1) {
+          router.replace("/admin");
+          return;
+        }
+
+        await supabase.auth.signOut();
+        setSigninError("This account does not have admin access.");
+        setCheckingSession(false);
+      } catch (_err) {
+        if (cancelled) return;
+        setSigninError("Could not verify admin access. Please try again.");
+        setCheckingSession(false);
       }
-      setCheckingSession(false);
     }
     checkSession();
     return () => {
@@ -38,6 +65,14 @@ export default function LoginPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error") || "";
+    if (error === "not_superadmin") {
+      setSigninError("This account does not have admin access.");
+      return;
+    }
+    if (error === "missing_env") {
+      setSigninError("Missing Supabase environment variables.");
+      return;
+    }
     setSigninError(error);
   }, []);
 
@@ -46,14 +81,8 @@ export default function LoginPage() {
       alert("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
       return;
     }
-    const normalizedEmail = adminEmail.trim().toLowerCase();
-    if (!normalizedEmail) {
-      setSigninError("Enter your admin email first.");
-      return;
-    }
-
     setSigninError("");
-    setCheckingAdminEmail(true);
+    setSigningIn(true);
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -62,14 +91,13 @@ export default function LoginPage() {
         skipBrowserRedirect: true,
         queryParams: {
           prompt: "select_account",
-          login_hint: normalizedEmail,
         },
       },
     });
 
     if (error) {
       setSigninError(error.message);
-      setCheckingAdminEmail(false);
+      setSigningIn(false);
       return;
     }
     if (data?.url) {
@@ -77,7 +105,7 @@ export default function LoginPage() {
       return;
     }
     setSigninError("Could not start Google sign-in. Please try again.");
-    setCheckingAdminEmail(false);
+    setSigningIn(false);
   };
 
   return (
@@ -93,33 +121,11 @@ export default function LoginPage() {
           </p>
         ) : null}
         <p style={{ marginTop: 16, fontSize: 18, color: "#334155" }}>
-          Sign in with Google to continue.
+          Sign in with Google. Access is granted only if your profile has <code>is_superadmin = true</code>.
         </p>
-        <label
-          htmlFor="admin-email"
-          style={{ marginTop: 12, display: "block", fontSize: 12, fontWeight: 700, color: "#64748b" }}
-        >
-          Admin Email
-        </label>
-        <input
-          id="admin-email"
-          type="email"
-          value={adminEmail}
-          onChange={(event) => setAdminEmail(event.target.value)}
-          placeholder="your-admin-email@domain.com"
-          style={{
-            marginTop: 8,
-            width: "100%",
-            maxWidth: 420,
-            border: "1px solid #cbd5e1",
-            borderRadius: 10,
-            padding: "10px 12px",
-            fontSize: 16,
-          }}
-        />
         <button
           onClick={handleLogin}
-          disabled={checkingAdminEmail}
+          disabled={signingIn}
           style={{
             marginTop: 20,
             border: "none",
@@ -130,11 +136,11 @@ export default function LoginPage() {
             fontSize: 18,
             fontWeight: 700,
             cursor: "pointer",
-            opacity: checkingAdminEmail ? 0.7 : 1,
+            opacity: signingIn ? 0.7 : 1,
           }}
           type="button"
         >
-          {checkingAdminEmail ? "Checking admin access..." : "Sign in with Google"}
+          {signingIn ? "Redirecting to Google..." : "Sign in with Google"}
         </button>
       </div>
     </main>

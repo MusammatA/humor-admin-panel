@@ -1,8 +1,7 @@
 "use client";
 
-import { BarChart3, LogIn, Menu, PlusSquare, Search, ShieldCheck, UserRound, X } from "lucide-react";
-import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
-import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
+import { BarChart3, Menu, PlusSquare, Search, UserRound, X } from "lucide-react";
+import { type ComponentType, useState } from "react";
 import { CreateTab } from "./create-tab";
 import { DataTab } from "./data-tab";
 import { UserActivityManager } from "./user-activity-manager";
@@ -18,136 +17,22 @@ type AdminTabsShellProps = {
     topTopics: TopicCount[];
     error: string | null;
   };
+  adminEmail?: string;
 };
 
-type AdminTab = "create" | "data" | "users" | "account" | "admin-login";
+type AdminTab = "create" | "data" | "users" | "account";
 
 const TAB_ITEMS: Array<{ id: AdminTab; label: string; icon: ComponentType<{ className?: string }> }> = [
-  { id: "admin-login", label: "Admin Login", icon: ShieldCheck },
   { id: "create", label: "Create", icon: PlusSquare },
   { id: "data", label: "Data", icon: BarChart3 },
   { id: "users", label: "Search Users", icon: Search },
   { id: "account", label: "Account", icon: UserRound },
 ];
 
-export function AdminTabsShell({ stats }: AdminTabsShellProps) {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>("data");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [currentEmail, setCurrentEmail] = useState("");
-  const [roleLoading, setRoleLoading] = useState(true);
-  const [roleError, setRoleError] = useState<string | null>(null);
-  const [adminLoginEmail, setAdminLoginEmail] = useState("");
-  const [adminLoginLoading, setAdminLoginLoading] = useState(false);
-  const roleRequestSeq = useRef(0);
-
-  async function loadRole() {
-    const requestSeq = ++roleRequestSeq.current;
-    if (!supabase) {
-      if (requestSeq !== roleRequestSeq.current) return;
-      setRoleError("Supabase client not available.");
-      setActiveTab("data");
-      setRoleLoading(false);
-      setAdminLoginLoading(false);
-      return;
-    }
-
-    if (requestSeq !== roleRequestSeq.current) return;
-    setRoleLoading(true);
-    setRoleError(null);
-    // Default to least privilege while role is being re-resolved.
-    setIsAdmin(false);
-    try {
-      const res = await fetch("/api/admin-status", { cache: "no-store" });
-      const payload = await res.json().catch(() => ({}));
-      if (requestSeq !== roleRequestSeq.current) return;
-
-      const authenticated = payload?.authenticated === true;
-      const superadmin = payload?.isSuperadmin === true || payload?.isSuperadmin === 1;
-      const email = String(payload?.email || "");
-      const serverRoleError = String(payload?.error || "").trim();
-
-      if (!authenticated) {
-        setCurrentEmail("");
-        setIsAdmin(false);
-        setActiveTab("data");
-        setRoleLoading(false);
-        setAdminLoginLoading(false);
-        return;
-      }
-
-      setCurrentEmail(email);
-      setIsAdmin(superadmin);
-      if (!superadmin) {
-        setRoleError(serverRoleError || "Sorry, you don't have Supabase access.");
-        setActiveTab("data");
-      } else {
-        // Explicitly clear stale denial errors after a confirmed admin role.
-        setRoleError(null);
-      }
-      setRoleLoading(false);
-      setAdminLoginLoading(false);
-    } catch (_err) {
-      if (requestSeq !== roleRequestSeq.current) return;
-      setRoleError("Could not resolve admin status.");
-      setCurrentEmail("");
-      setIsAdmin(false);
-      setRoleLoading(false);
-      setAdminLoginLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadRole();
-    if (!supabase) return;
-    const { data } = supabase.auth.onAuthStateChange(() => {
-      loadRole();
-    });
-    return () => {
-      data.subscription.unsubscribe();
-    };
-  }, [supabase]);
-
-  async function handleAdminLogin() {
-    if (!supabase) return;
-    const emailToCheck = adminLoginEmail.trim().toLowerCase();
-    if (!emailToCheck) {
-      setRoleError("Enter your admin email first.");
-      return;
-    }
-
-    setRoleError(null);
-    setAdminLoginLoading(true);
-
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`,
-        skipBrowserRedirect: true,
-        queryParams: {
-          prompt: "select_account",
-          login_hint: emailToCheck,
-        },
-      },
-    });
-    if (error) {
-      setRoleError(error.message);
-      setAdminLoginLoading(false);
-      return;
-    }
-    if (data?.url) {
-      window.location.assign(data.url);
-      return;
-    }
-    setRoleError("Could not start Google sign-in. Please try again.");
-    setAdminLoginLoading(false);
-  }
-
-  const canEdit = !roleLoading && isAdmin;
-  const visibleTabs = canEdit
-    ? TAB_ITEMS
-    : TAB_ITEMS.filter((item) => item.id === "admin-login" || item.id === "data");
+  const canEdit = true;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -174,22 +59,15 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <h2 className="text-lg font-semibold text-slate-900">Dashboard Tabs</h2>
-        <p className="mt-1 text-xs text-slate-500">Read-only for everyone. Editing is superadmin-only.</p>
+        <h2 className="text-lg font-semibold text-slate-900">Admin Dashboard</h2>
+        <p className="mt-1 text-xs text-slate-500">Superadmin-only workspace.</p>
 
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          {roleLoading
-            ? "Checking permissions..."
-            : canEdit
-            ? `Role: Superadmin Editor (${currentEmail || "signed in"})`
-            : currentEmail
-            ? `Role: Viewer (${currentEmail})`
-            : "Role: Guest Viewer"}
+          {`Role: Superadmin Editor (${adminEmail || "signed in"})`}
         </div>
-        {roleError ? <p className="mt-2 text-xs text-rose-600">{roleError}</p> : null}
 
         <nav className="mt-4 space-y-2">
-          {visibleTabs.map((item) => {
+          {TAB_ITEMS.map((item) => {
             const Icon = item.icon;
             const selected = activeTab === item.id;
             return (
@@ -213,49 +91,9 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       </aside>
 
       <div className="mx-auto max-w-7xl p-6 pt-20 md:p-10 md:pt-20">
-        {roleError ? (
-          <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-            {roleError}
-          </p>
-        ) : null}
-
-        {activeTab === "admin-login" ? (
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h1 className="text-2xl font-semibold text-slate-900">Admin Access</h1>
-            <p className="mt-2 text-sm text-slate-600">
-              Anyone can view this dashboard. Editing actions require a Google sign-in account that is marked
-              <code> is_superadmin = true </code> in Supabase profiles.
-            </p>
-            <div className="mt-3">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                Admin Email
-              </label>
-              <input
-                value={adminLoginEmail}
-                onChange={(event) => setAdminLoginEmail(event.target.value)}
-                type="email"
-                placeholder="your-admin-email@domain.com"
-                className="w-full max-w-md rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-900"
-              />
-            </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={handleAdminLogin}
-                disabled={adminLoginLoading}
-                className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
-              >
-                <LogIn className="h-4 w-4" />
-                {adminLoginLoading ? "Checking Admin Access..." : "Admin Login (Google)"}
-              </button>
-            </div>
-          </section>
-        ) : null}
         {activeTab === "create" ? <CreateTab isAdmin={canEdit} /> : null}
         {activeTab === "data" ? <DataTab stats={stats} canViewUserData={canEdit} /> : null}
-        {activeTab === "users" ? (
-          <UserActivityManager canViewSensitive={canEdit} canMutate={canEdit} />
-        ) : null}
+        {activeTab === "users" ? <UserActivityManager canViewSensitive={canEdit} canMutate={canEdit} /> : null}
         {activeTab === "account" ? <AccountTab /> : null}
       </div>
     </main>
