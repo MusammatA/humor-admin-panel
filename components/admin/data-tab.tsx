@@ -172,6 +172,27 @@ function captionText(row: Row) {
   return str(row, ["caption_text", "text", "content", "caption", "generated_caption", "meme_text", "output"]);
 }
 
+function getImageUploaderId(row: Row) {
+  return str(row, ["user_id", "uploader_user_id", "uploaded_by_user_id", "created_by_user_id", "profile_id"]);
+}
+
+function getVoteUserId(row: Row) {
+  return str(row, ["profile_id", "user_id", "voter_user_id"]);
+}
+
+function getProfileId(row: Row) {
+  return str(row, ["id"]);
+}
+
+function getProfileLabel(row: Row) {
+  return (
+    str(row, ["full_name"]) ||
+    str(row, ["username"]) ||
+    str(row, ["email"]) ||
+    `User ${getProfileId(row).slice(0, 8)}`
+  );
+}
+
 function topCounts(counts: Map<string, number>, top = 20): BubbleItem[] {
   return Array.from(counts.entries())
     .filter(([, value]) => value > 0)
@@ -241,6 +262,8 @@ export function DataTab({ stats }: DataTabProps) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [captions, setCaptions] = useState<Row[]>([]);
   const [images, setImages] = useState<Row[]>([]);
+  const [votes, setVotes] = useState<Row[]>([]);
+  const [profiles, setProfiles] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function fetchAllRows(table: string, pageSize: number, maxPages: number) {
@@ -262,12 +285,16 @@ export function DataTab({ stats }: DataTabProps) {
   async function load() {
     if (!supabase) return;
     try {
-      const [captionRows, imageRows] = await Promise.all([
+      const [captionRows, imageRows, voteRows, profileRows] = await Promise.all([
         fetchAllRows("captions", 2000, 200),
         fetchAllRows("images", 1000, 120),
+        fetchAllRows("caption_votes", 3000, 200),
+        fetchAllRows("profiles", 1000, 120),
       ]);
       setCaptions(captionRows);
       setImages(imageRows);
+      setVotes(voteRows);
+      setProfiles(profileRows);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data.");
@@ -305,6 +332,57 @@ export function DataTab({ stats }: DataTabProps) {
 
   const packedWords = useMemo(() => packBubbles(topWords), [topWords]);
 
+  const topActiveUsers = useMemo(() => {
+    const uploadsByUser = new Map<string, number>();
+    const votesByUser = new Map<string, number>();
+    const labelByUser = new Map<string, string>();
+
+    for (const profile of profiles) {
+      const id = getProfileId(profile);
+      if (!id) continue;
+      labelByUser.set(id, getProfileLabel(profile));
+    }
+
+    for (const image of images) {
+      const userId = getImageUploaderId(image);
+      if (!userId) continue;
+      uploadsByUser.set(userId, (uploadsByUser.get(userId) ?? 0) + 1);
+      if (!labelByUser.has(userId)) {
+        labelByUser.set(userId, `User ${userId.slice(0, 8)}`);
+      }
+    }
+
+    for (const vote of votes) {
+      const userId = getVoteUserId(vote);
+      if (!userId) continue;
+      votesByUser.set(userId, (votesByUser.get(userId) ?? 0) + 1);
+      if (!labelByUser.has(userId)) {
+        labelByUser.set(userId, `User ${userId.slice(0, 8)}`);
+      }
+    }
+
+    const userIds = new Set([...uploadsByUser.keys(), ...votesByUser.keys()]);
+    const ranked = Array.from(userIds)
+      .map((userId) => {
+        const uploads = uploadsByUser.get(userId) ?? 0;
+        const voteCount = votesByUser.get(userId) ?? 0;
+        return {
+          userId,
+          label: labelByUser.get(userId) ?? `User ${userId.slice(0, 8)}`,
+          uploads,
+          votes: voteCount,
+          total: uploads + voteCount,
+        };
+      })
+      .filter((entry) => entry.total > 0)
+      .sort((a, b) => b.total - a.total || b.uploads - a.uploads || b.votes - a.votes)
+      .slice(0, 10);
+
+    return ranked;
+  }, [images, votes, profiles]);
+
+  const activeLeader = topActiveUsers[0];
+
   return (
     <section className="space-y-6">
       <header>
@@ -328,8 +406,12 @@ export function DataTab({ stats }: DataTabProps) {
         />
         <StatCard
           title="Most Active User"
-          value={stats.mostActiveUser}
-          subtitle={`${stats.mostActiveCount.toLocaleString()} captions`}
+          value={activeLeader?.label ?? stats.mostActiveUser}
+          subtitle={
+            activeLeader
+              ? `${activeLeader.uploads} uploads + ${activeLeader.votes} votes`
+              : `${stats.mostActiveCount.toLocaleString()} captions`
+          }
           icon={UserRound}
         />
         <StatCard
@@ -389,6 +471,35 @@ export function DataTab({ stats }: DataTabProps) {
                 </g>
               ))}
             </svg>
+          </div>
+        )}
+      </article>
+
+      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="text-base font-semibold text-slate-900">Top 10 Most Active Users (Uploads + Votes)</h3>
+        <p className="mt-1 text-sm text-slate-600">
+          Ranked by combined count of images uploaded and votes submitted.
+        </p>
+
+        {topActiveUsers.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-500">No user activity found yet.</p>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {topActiveUsers.map((user, index) => (
+              <div
+                key={user.userId}
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  index === 0
+                    ? "border-amber-300 bg-amber-50 text-amber-900"
+                    : "border-slate-200 bg-slate-50 text-slate-700"
+                }`}
+              >
+                <span className="font-semibold">#{index + 1} {user.label}</span>
+                <span className="ml-2">Total: {user.total}</span>
+                <span className="ml-2">Uploads: {user.uploads}</span>
+                <span className="ml-2">Votes: {user.votes}</span>
+              </div>
+            ))}
           </div>
         )}
       </article>
