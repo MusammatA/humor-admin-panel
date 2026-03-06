@@ -326,6 +326,10 @@ export function UserActivityManager({ canViewSensitive, canMutate }: UserActivit
   }, [selectedUser, captions, votes, images]);
 
   async function handleDeleteVote(vote: GenericRow) {
+    if (!canMutate) {
+      setError("Only superadmins can delete votes.");
+      return;
+    }
     if (!supabase) return;
     if (!selectedUser) return;
     if (!window.confirm("Delete this vote?")) return;
@@ -357,6 +361,10 @@ export function UserActivityManager({ canViewSensitive, canMutate }: UserActivit
   }
 
   async function handleDeleteImage(image: GenericRow) {
+    if (!canMutate) {
+      setError("Only superadmins can delete images.");
+      return;
+    }
     if (!supabase) return;
     const imageId = getImageId(image);
     if (!imageId) return;
