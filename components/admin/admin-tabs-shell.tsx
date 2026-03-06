@@ -113,56 +113,22 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   async function handleAdminLogin() {
     if (!supabase) return;
     setRoleError(null);
-
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    if (authError) {
-      setRoleError(authError.message);
-      return;
-    }
-
-    if (authData.user) {
-      if (!isAdmin) {
-        setRoleError("Your account is signed in but does not have superadmin access.");
-        setAdminModeEnabled(false);
-        return;
-      }
-      if (typeof window !== "undefined") {
-        sessionStorage.setItem(ADMIN_MODE_INTENT_KEY, "1");
-      }
-      setAdminModeEnabled(true);
-      return;
-    }
-
     if (typeof window !== "undefined") {
       sessionStorage.setItem(ADMIN_MODE_INTENT_KEY, "1");
     }
+    // Force Google account chooser so a viewer can switch into an admin account.
+    await supabase.auth.signOut();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          prompt: "select_account",
+        },
       },
     });
     if (error) {
       setRoleError(error.message);
-    }
-  }
-
-  async function handleLogout() {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    setIsAdmin(false);
-    setAdminModeEnabled(false);
-    setCurrentEmail("");
-    setRoleError(null);
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
-    }
-  }
-
-  function disableAdminMode() {
-    setAdminModeEnabled(false);
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
     }
   }
 
@@ -249,27 +215,6 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
               >
                 <LogIn className="h-4 w-4" />
                 Admin Login (Google)
-              </button>
-              <button
-                type="button"
-                onClick={disableAdminMode}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Disable Admin Editing
-              </button>
-              <button
-                type="button"
-                onClick={handleLogout}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Log Out
-              </button>
-              <button
-                type="button"
-                onClick={loadRole}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
-              >
-                Refresh Role
               </button>
             </div>
           </section>
