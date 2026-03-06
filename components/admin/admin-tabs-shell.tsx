@@ -50,6 +50,9 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
 
     setRoleLoading(true);
     setRoleError(null);
+    // Default to least privilege while role is being re-resolved.
+    setIsAdmin(false);
+    setAdminModeEnabled(false);
     try {
       const hasAdminIntent = typeof window !== "undefined" && sessionStorage.getItem(ADMIN_MODE_INTENT_KEY) === "1";
       const res = await fetch("/api/admin-status", { cache: "no-store" });
@@ -128,7 +131,7 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
     }
   }
 
-  const canEdit = isAdmin && adminModeEnabled;
+  const canEdit = !roleLoading && isAdmin && adminModeEnabled;
 
   return (
     <main className="min-h-screen bg-slate-50">
