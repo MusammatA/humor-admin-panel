@@ -35,9 +35,11 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>("data");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminModeEnabled, setAdminModeEnabled] = useState(false);
   const [currentEmail, setCurrentEmail] = useState("");
   const [roleLoading, setRoleLoading] = useState(true);
   const [roleError, setRoleError] = useState<string | null>(null);
+  const ADMIN_MODE_INTENT_KEY = "admin_mode_intent_v1";
 
   async function loadRole() {
     if (!supabase) {
@@ -53,12 +55,17 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       setRoleError(authError.message ?? "Could not resolve logged-in user.");
       setCurrentEmail("");
       setIsAdmin(false);
+      setAdminModeEnabled(false);
       setRoleLoading(false);
       return;
     }
     if (!authData.user) {
       setCurrentEmail("");
       setIsAdmin(false);
+      setAdminModeEnabled(false);
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
+      }
       setRoleLoading(false);
       return;
     }
@@ -73,11 +80,22 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
     if (profileError) {
       setRoleError(profileError.message);
       setIsAdmin(false);
+      setAdminModeEnabled(false);
       setRoleLoading(false);
       return;
     }
 
-    setIsAdmin(Boolean(profile?.is_superadmin));
+    const superadmin = Boolean(profile?.is_superadmin);
+    setIsAdmin(superadmin);
+    if (!superadmin) {
+      setAdminModeEnabled(false);
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
+      }
+    } else if (typeof window !== "undefined") {
+      const intent = sessionStorage.getItem(ADMIN_MODE_INTENT_KEY) === "1";
+      setAdminModeEnabled(intent);
+    }
     setRoleLoading(false);
   }
 
@@ -94,6 +112,30 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
 
   async function handleAdminLogin() {
     if (!supabase) return;
+    setRoleError(null);
+
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      setRoleError(authError.message);
+      return;
+    }
+
+    if (authData.user) {
+      if (!isAdmin) {
+        setRoleError("Your account is signed in but does not have superadmin access.");
+        setAdminModeEnabled(false);
+        return;
+      }
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem(ADMIN_MODE_INTENT_KEY, "1");
+      }
+      setAdminModeEnabled(true);
+      return;
+    }
+
+    if (typeof window !== "undefined") {
+      sessionStorage.setItem(ADMIN_MODE_INTENT_KEY, "1");
+    }
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -109,9 +151,22 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
     if (!supabase) return;
     await supabase.auth.signOut();
     setIsAdmin(false);
+    setAdminModeEnabled(false);
     setCurrentEmail("");
     setRoleError(null);
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
+    }
   }
+
+  function disableAdminMode() {
+    setAdminModeEnabled(false);
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
+    }
+  }
+
+  const canEdit = isAdmin && adminModeEnabled;
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -144,8 +199,10 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
           {roleLoading
             ? "Checking permissions..."
+            : canEdit
+            ? `Role: Superadmin Editor (${currentEmail || "signed in"})`
             : isAdmin
-            ? `Role: Superadmin (${currentEmail || "signed in"})`
+            ? `Role: Superadmin (read-only until Admin Login is enabled)`
             : currentEmail
             ? `Role: Viewer (${currentEmail})`
             : "Role: Guest Viewer"}
@@ -195,6 +252,13 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
               </button>
               <button
                 type="button"
+                onClick={disableAdminMode}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
+              >
+                Disable Admin Editing
+              </button>
+              <button
+                type="button"
                 onClick={handleLogout}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700"
               >
@@ -210,10 +274,10 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
             </div>
           </section>
         ) : null}
-        {activeTab === "create" ? <CreateTab isAdmin={isAdmin} /> : null}
+        {activeTab === "create" ? <CreateTab isAdmin={canEdit} /> : null}
         {activeTab === "data" ? <DataTab stats={stats} /> : null}
         {activeTab === "users" ? (
-          <UserActivityManager canViewSensitive={isAdmin} canMutate={isAdmin} />
+          <UserActivityManager canViewSensitive={true} canMutate={canEdit} />
         ) : null}
         {activeTab === "account" ? <AccountTab /> : null}
       </div>
