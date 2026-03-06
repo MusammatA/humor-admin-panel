@@ -72,6 +72,93 @@ const STOPWORDS = new Set([
   "its",
 ]);
 
+const COMMON_NON_SUBJECT_WORDS = new Set([
+  "like",
+  "look",
+  "when",
+  "what",
+  "how",
+  "why",
+  "where",
+  "there",
+  "here",
+  "then",
+  "than",
+  "into",
+  "about",
+  "really",
+  "very",
+  "also",
+  "just",
+  "dont",
+  "cant",
+  "wont",
+  "got",
+  "get",
+  "gotta",
+  "make",
+  "made",
+  "much",
+  "many",
+  "some",
+  "more",
+  "most",
+  "good",
+  "bad",
+]);
+
+const SUBJECT_ALIASES: Record<string, string> = {
+  columbia: "columbia",
+  barnard: "barnard",
+  butler: "butler",
+  lerner: "lerner",
+  furnald: "furnald",
+  hamilton: "hamilton",
+  dodge: "dodge",
+  low: "low",
+  campus: "campus",
+  dorm: "dorm",
+  dorms: "dorm",
+  final: "finals",
+  finals: "finals",
+  midterm: "midterms",
+  midterms: "midterms",
+  class: "class",
+  classes: "class",
+  lecture: "lecture",
+  lectures: "lecture",
+  homework: "homework",
+  professor: "professor",
+  professors: "professor",
+  ta: "ta",
+  exam: "exam",
+  exams: "exam",
+  war: "war",
+  politics: "politics",
+  political: "politics",
+  election: "election",
+  elections: "election",
+  government: "government",
+  economy: "economy",
+  economics: "economics",
+  finance: "finance",
+  business: "business",
+  ai: "ai",
+  ml: "ai",
+  cs: "computer-science",
+  computerscience: "computer-science",
+  engineering: "engineering",
+  math: "math",
+  physics: "physics",
+  chemistry: "chemistry",
+  biology: "biology",
+  history: "history",
+  english: "english",
+  literature: "literature",
+  art: "art",
+  music: "music",
+};
+
 function str(row: Row, keys: string[]) {
   for (const key of keys) {
     const value = row[key];
@@ -192,16 +279,28 @@ export function DataTab({ stats }: DataTabProps) {
   }, []);
 
   const topWords = useMemo(() => {
-    const wordCounts = new Map<string, number>();
+    const subjectCounts = new Map<string, number>();
+    const fallbackCounts = new Map<string, number>();
     for (const row of captions) {
       const text = captionText(row).toLowerCase();
       if (!text) continue;
       for (const token of text.split(/[^a-z0-9]+/)) {
-        if (!token || token.length < 3 || STOPWORDS.has(token)) continue;
-        wordCounts.set(token, (wordCounts.get(token) ?? 0) + 1);
+        if (!token || STOPWORDS.has(token) || COMMON_NON_SUBJECT_WORDS.has(token)) continue;
+        const subjectWord = SUBJECT_ALIASES[token];
+        if (subjectWord) {
+          subjectCounts.set(subjectWord, (subjectCounts.get(subjectWord) ?? 0) + 1);
+          continue;
+        }
+        if (token.length < 5) continue;
+        fallbackCounts.set(token, (fallbackCounts.get(token) ?? 0) + 1);
       }
     }
-    return topCounts(wordCounts, 20);
+    const topSubjects = topCounts(subjectCounts, 20);
+    if (topSubjects.length >= 8) return topSubjects;
+    const filteredFallback = new Map(
+      Array.from(fallbackCounts.entries()).filter(([, count]) => count >= 3),
+    );
+    return topCounts(filteredFallback, 20);
   }, [captions]);
 
   const packedWords = useMemo(() => packBubbles(topWords), [topWords]);
