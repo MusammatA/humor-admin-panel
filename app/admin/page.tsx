@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { StatCard } from "../../components/stat-card";
 import { CaptionsManager } from "../../components/admin/captions-manager";
 import { StorageGrid } from "../../components/admin/storage-grid";
+import { UserActivityManager } from "../../components/admin/user-activity-manager";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../lib/supabase-config";
 
 type CaptionRow = {
@@ -188,6 +189,7 @@ export default async function AdminDashboardPage() {
         </section>
 
         <CaptionsManager />
+        <UserActivityManager />
         <StorageGrid bucketName="images" />
       </div>
     </main>
