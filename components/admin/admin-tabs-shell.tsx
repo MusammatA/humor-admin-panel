@@ -42,32 +42,6 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   const [adminLoginLoading, setAdminLoginLoading] = useState(false);
   const roleRequestSeq = useRef(0);
 
-  async function precheckAdminEmail(email: string) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    try {
-      const res = await fetch(`/api/admin-email-allowed?email=${encodeURIComponent(email)}`, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      const payload = await res.json().catch(() => ({}));
-      return {
-        allowed: payload?.allowed === true,
-        indeterminate: payload?.indeterminate === true,
-        error: typeof payload?.error === "string" ? payload.error : "",
-      };
-    } catch (err) {
-      const isAbort = err instanceof Error && err.name === "AbortError";
-      return {
-        allowed: false,
-        indeterminate: true,
-        error: isAbort ? "Admin check timed out." : "Admin check failed.",
-      };
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
   async function loadRole() {
     const requestSeq = ++roleRequestSeq.current;
     if (!supabase) {
@@ -92,6 +66,7 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       const authenticated = payload?.authenticated === true;
       const superadmin = payload?.isSuperadmin === true || payload?.isSuperadmin === 1;
       const email = String(payload?.email || "");
+      const serverRoleError = String(payload?.error || "").trim();
 
       if (!authenticated) {
         setCurrentEmail("");
@@ -105,7 +80,7 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       setCurrentEmail(email);
       setIsAdmin(superadmin);
       if (!superadmin) {
-        setRoleError("Sorry, you don't have Supabase access.");
+        setRoleError(serverRoleError || "Sorry, you don't have Supabase access.");
         setActiveTab("data");
       } else {
         // Explicitly clear stale denial errors after a confirmed admin role.
@@ -144,16 +119,6 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
 
     setRoleError(null);
     setAdminLoginLoading(true);
-    const precheck = await precheckAdminEmail(emailToCheck);
-    if (!precheck.allowed && !precheck.indeterminate) {
-      setRoleError(precheck.error || "Sorry, you don't have Supabase access.");
-      setActiveTab("data");
-      setAdminLoginLoading(false);
-      return;
-    }
-    if (!precheck.allowed && precheck.indeterminate) {
-      setRoleError("Admin pre-check timed out. Continuing to sign-in; final role check runs after login.");
-    }
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",

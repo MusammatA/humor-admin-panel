@@ -12,32 +12,6 @@ export default function LoginPage() {
   const [adminEmail, setAdminEmail] = useState("");
   const [checkingAdminEmail, setCheckingAdminEmail] = useState(false);
 
-  async function precheckAdminEmail(email: string) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    try {
-      const res = await fetch(`/api/admin-email-allowed?email=${encodeURIComponent(email)}`, {
-        cache: "no-store",
-        signal: controller.signal,
-      });
-      const payload = await res.json().catch(() => ({}));
-      return {
-        allowed: payload?.allowed === true,
-        indeterminate: payload?.indeterminate === true,
-        error: typeof payload?.error === "string" ? payload.error : "",
-      };
-    } catch (err) {
-      const isAbort = err instanceof Error && err.name === "AbortError";
-      return {
-        allowed: false,
-        indeterminate: true,
-        error: isAbort ? "Admin check timed out." : "Admin check failed.",
-      };
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
   useEffect(() => {
     let cancelled = false;
     async function checkSession() {
@@ -80,15 +54,6 @@ export default function LoginPage() {
 
     setSigninError("");
     setCheckingAdminEmail(true);
-    const precheck = await precheckAdminEmail(normalizedEmail);
-    if (!precheck.allowed && !precheck.indeterminate) {
-      setSigninError(precheck.error || "Sorry, you don't have Supabase access.");
-      setCheckingAdminEmail(false);
-      return;
-    }
-    if (!precheck.allowed && precheck.indeterminate) {
-      setSigninError("Admin pre-check timed out. Continuing to sign-in; final role check runs after login.");
-    }
 
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
