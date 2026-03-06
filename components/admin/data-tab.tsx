@@ -296,6 +296,8 @@ export function DataTab({ stats }: DataTabProps) {
   const [profiles, setProfiles] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingLabel, setLoadingLabel] = useState("Idle");
 
   async function fetchAllRows(table: string, pageSize: number, maxPages: number, maxRows: number) {
     if (!supabase) return [] as Row[];
@@ -317,20 +319,54 @@ export function DataTab({ stats }: DataTabProps) {
   async function load() {
     if (!supabase) return;
     setLoading(true);
+    setLoadingProgress(0);
+    setLoadingLabel("Starting data load...");
     try {
+      let completed = 0;
+      const total = 4;
+      const markDone = (nextLabel: string) => {
+        completed += 1;
+        setLoadingProgress(Math.round((completed / total) * 100));
+        setLoadingLabel(nextLabel);
+      };
+
+      setLoadingLabel("Loading captions...");
+      const captionsPromise = fetchAllRows("captions", 1000, 25, 25000).then((rows) => {
+        markDone("Captions loaded. Loading images...");
+        return rows;
+      });
+
+      const imagesPromise = fetchAllRows("images", 1000, 10, 10000).then((rows) => {
+        markDone("Images loaded. Loading votes...");
+        return rows;
+      });
+
+      const votesPromise = fetchAllRows("caption_votes", 1000, 20, 20000).then((rows) => {
+        markDone("Votes loaded. Loading profiles...");
+        return rows;
+      });
+
+      const profilesPromise = fetchAllRows("profiles", 1000, 5, 5000).then((rows) => {
+        markDone("Profiles loaded.");
+        return rows;
+      });
+
       const [captionRows, imageRows, voteRows, profileRows] = await Promise.all([
-        fetchAllRows("captions", 1000, 25, 25000),
-        fetchAllRows("images", 1000, 10, 10000),
-        fetchAllRows("caption_votes", 1000, 20, 20000),
-        fetchAllRows("profiles", 1000, 5, 5000),
+        captionsPromise,
+        imagesPromise,
+        votesPromise,
+        profilesPromise,
       ]);
       setCaptions(captionRows);
       setImages(imageRows);
       setVotes(voteRows);
       setProfiles(profileRows);
       setError(null);
+      setLoadingProgress(100);
+      setLoadingLabel("Data ready.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data.");
+      setLoadingLabel("Load failed.");
     } finally {
       setLoading(false);
     }
@@ -444,7 +480,20 @@ export function DataTab({ stats }: DataTabProps) {
         <p className="mt-2 text-sm text-slate-600">
           Top 20 caption words by frequency across all loaded caption rows.
         </p>
-        {loading ? <p className="mt-1 text-xs text-slate-500">Loading data snapshot...</p> : null}
+        {loading ? (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+            <div className="mb-1 flex items-center justify-between text-xs text-slate-600">
+              <span>{loadingLabel}</span>
+              <span>{loadingProgress}%</span>
+            </div>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
+              <div
+                className="h-full rounded-full bg-slate-900 transition-all duration-300"
+                style={{ width: `${loadingProgress}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
         {error || stats.error ? (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             {error || stats.error}

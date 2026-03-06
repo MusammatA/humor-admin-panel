@@ -3,7 +3,6 @@ import { AdminTabsShell } from "../../components/admin/admin-tabs-shell";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../lib/supabase-config";
 
 type CaptionRow = {
-  topic?: string | null;
   caption_text?: string | null;
   text?: string | null;
 };
@@ -20,9 +19,6 @@ const TOPIC_KEYWORDS = [
 ];
 
 function inferTopic(caption: CaptionRow): string | null {
-  const explicit = caption.topic?.trim().toLowerCase();
-  if (explicit) return explicit;
-
   const body = (caption.caption_text ?? caption.text ?? "").toLowerCase();
   if (!body) return null;
 
@@ -47,7 +43,7 @@ async function getDashboardStats() {
 
   const [imagesRes, captionsRes] = await Promise.all([
     supabase.from("images").select("*", { count: "exact", head: true }),
-    supabase.from("captions").select("topic, caption_text, text").limit(20000),
+    supabase.from("captions").select("caption_text, text").limit(20000),
   ]);
 
   if (imagesRes.error || captionsRes.error) {
