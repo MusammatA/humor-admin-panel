@@ -5,8 +5,8 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../../lib/supabase-config";
 
 export async function GET(request: Request) {
   const reqUrl = new URL(request.url);
-  const code = reqUrl.searchParams.get("code");
   const origin = reqUrl.origin;
+  const code = reqUrl.searchParams.get("code");
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return NextResponse.redirect(`${origin}/login?error=missing_env`);

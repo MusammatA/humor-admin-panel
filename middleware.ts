@@ -30,8 +30,13 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/login", req.url));
     }
 
-    const email = String(user.email || "").toLowerCase();
-    if (!email.endsWith("@columbia.edu")) {
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("is_superadmin")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (profileError || !profile?.is_superadmin) {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
@@ -42,5 +47,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*"], // protect admin routes
+  matcher: ["/admin/:path*"],
 };
