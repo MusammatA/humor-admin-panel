@@ -1,11 +1,12 @@
 "use client";
 
-import { BarChart3, ImageIcon, Menu, Search, Sparkles, Type, UserRound, X } from "lucide-react";
-import { type ComponentType, useMemo, useState } from "react";
-import { CaptionsManager } from "./captions-manager";
-import { StorageGrid } from "./storage-grid";
+import { Menu, PlusSquare, Search, UserRound, X, BarChart3 } from "lucide-react";
+import { type ComponentType, useEffect, useMemo, useState } from "react";
+import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
+import { CreateTab } from "./create-tab";
+import { DataTab } from "./data-tab";
 import { UserActivityManager } from "./user-activity-manager";
-import { StatCard } from "../stat-card";
+import { AccountTab } from "./account-tab";
 
 type TopicCount = { topic: string; count: number };
 
@@ -19,23 +20,59 @@ type AdminTabsShellProps = {
   };
 };
 
-type AdminTab = "visuals" | "users" | "captions" | "images";
+type AdminTab = "create" | "data" | "users" | "account";
 
 const TAB_ITEMS: Array<{ id: AdminTab; label: string; icon: ComponentType<{ className?: string }> }> = [
-  { id: "visuals", label: "Data Visuals", icon: BarChart3 },
+  { id: "create", label: "Create", icon: PlusSquare },
+  { id: "data", label: "Data", icon: BarChart3 },
   { id: "users", label: "Search Users", icon: Search },
-  { id: "captions", label: "Captions", icon: Type },
-  { id: "images", label: "Images", icon: ImageIcon },
+  { id: "account", label: "Account", icon: UserRound },
 ];
 
 export function AdminTabsShell({ stats }: AdminTabsShellProps) {
-  const [activeTab, setActiveTab] = useState<AdminTab>("visuals");
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const [activeTab, setActiveTab] = useState<AdminTab>("create");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [roleLoading, setRoleLoading] = useState(true);
+  const [roleError, setRoleError] = useState<string | null>(null);
 
-  const maxTopicCount = useMemo(
-    () => Math.max(...stats.topTopics.map((item) => item.count), 1),
-    [stats.topTopics]
-  );
+  async function loadRole() {
+    if (!supabase) {
+      setRoleError("Supabase client not available.");
+      setRoleLoading(false);
+      return;
+    }
+
+    setRoleLoading(true);
+    setRoleError(null);
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      setRoleError(authError?.message ?? "Could not resolve logged-in user.");
+      setRoleLoading(false);
+      return;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("is_superadmin")
+      .eq("id", authData.user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      setRoleError(profileError.message);
+      setIsAdmin(false);
+      setRoleLoading(false);
+      return;
+    }
+
+    setIsAdmin(Boolean(profile?.is_superadmin));
+    setRoleLoading(false);
+  }
+
+  useEffect(() => {
+    loadRole();
+  }, []);
 
   return (
     <main className="min-h-screen bg-slate-50">
@@ -62,8 +99,14 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <h2 className="text-lg font-semibold text-slate-900">Admin Sections</h2>
-        <p className="mt-1 text-xs text-slate-500">Open a tab to inspect and manage project data.</p>
+        <h2 className="text-lg font-semibold text-slate-900">Dashboard Tabs</h2>
+        <p className="mt-1 text-xs text-slate-500">Modern control panel for memes, analytics, and users.</p>
+
+        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          {roleLoading ? "Checking permissions..." : isAdmin ? "Role: Admin" : "Role: Columbia User"}
+        </div>
+        {roleError ? <p className="mt-2 text-xs text-rose-600">{roleError}</p> : null}
+
         <nav className="mt-4 space-y-2">
           {TAB_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -77,9 +120,7 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
                   setSidebarOpen(false);
                 }}
                 className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium ${
-                  selected
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-700 hover:bg-slate-100"
+                  selected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -91,77 +132,12 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       </aside>
 
       <div className="mx-auto max-w-7xl p-6 pt-20 md:p-10 md:pt-20">
-        {activeTab === "visuals" ? (
-          <section className="space-y-6">
-            <header>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Data Visuals</h1>
-              <p className="mt-2 text-sm text-slate-600">
-                Snapshot of uploads, user activity, and caption-topic distribution.
-              </p>
-              {stats.error ? (
-                <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-                  {stats.error}
-                </p>
-              ) : null}
-            </header>
-
-            <section className="grid gap-4 md:grid-cols-3">
-              <StatCard
-                title="Total Images Uploaded"
-                value={stats.totalImages.toLocaleString()}
-                subtitle="All-time uploads"
-                icon={ImageIcon}
-              />
-              <StatCard
-                title="Most Active User"
-                value={stats.mostActiveUser}
-                subtitle={`${stats.mostActiveCount.toLocaleString()} captions`}
-                icon={UserRound}
-              />
-              <StatCard
-                title="Top Caption Topic"
-                value={stats.topTopics[0]?.topic ?? "No topic data"}
-                subtitle={
-                  stats.topTopics[0]
-                    ? `${stats.topTopics[0].count.toLocaleString()} mentions`
-                    : "No captions matched known topics"
-                }
-                icon={Sparkles}
-              />
-            </section>
-
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-lg font-semibold text-slate-900">Topic Distribution</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Bar visualization of top caption topics.
-              </p>
-              <ul className="mt-4 space-y-3">
-                {stats.topTopics.length === 0 ? (
-                  <li className="text-sm text-slate-500">No topic matches yet.</li>
-                ) : (
-                  stats.topTopics.map((item) => (
-                    <li key={item.topic} className="space-y-1">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium text-slate-800">{item.topic}</span>
-                        <span className="text-slate-600">{item.count.toLocaleString()}</span>
-                      </div>
-                      <div className="h-2 overflow-hidden rounded bg-slate-200">
-                        <div
-                          className="h-full rounded bg-slate-800"
-                          style={{ width: `${(item.count / maxTopicCount) * 100}%` }}
-                        />
-                      </div>
-                    </li>
-                  ))
-                )}
-              </ul>
-            </section>
-          </section>
+        {activeTab === "create" ? <CreateTab isAdmin={isAdmin} /> : null}
+        {activeTab === "data" ? <DataTab stats={stats} /> : null}
+        {activeTab === "users" ? (
+          <UserActivityManager canViewSensitive={isAdmin} canMutate={isAdmin} />
         ) : null}
-
-        {activeTab === "users" ? <UserActivityManager /> : null}
-        {activeTab === "captions" ? <CaptionsManager /> : null}
-        {activeTab === "images" ? <StorageGrid bucketName="images" /> : null}
+        {activeTab === "account" ? <AccountTab /> : null}
       </div>
     </main>
   );

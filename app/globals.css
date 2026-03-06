@@ -11,3 +11,31 @@ body {
 * {
   box-sizing: border-box;
 }
+
+html.dark body {
+  background: #020617;
+}
+
+html.dark .bg-slate-50 {
+  background-color: #020617 !important;
+}
+
+html.dark .bg-white {
+  background-color: #0f172a !important;
+}
+
+html.dark .text-slate-900 {
+  color: #f8fafc !important;
+}
+
+html.dark .text-slate-800,
+html.dark .text-slate-700,
+html.dark .text-slate-600,
+html.dark .text-slate-500 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .border-slate-200,
+html.dark .border-slate-300 {
+  border-color: #334155 !important;
+}

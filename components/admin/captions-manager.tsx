@@ -22,7 +22,11 @@ function getTextColumn(row: CaptionRow): "caption_text" | "text" {
   return "text";
 }
 
-export function CaptionsManager() {
+type CaptionsManagerProps = {
+  canManage: boolean;
+};
+
+export function CaptionsManager({ canManage }: CaptionsManagerProps) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [captions, setCaptions] = useState<CaptionRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -109,7 +113,11 @@ export function CaptionsManager() {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <h2 className="text-lg font-semibold text-slate-900">Caption Management</h2>
-          <p className="text-sm text-slate-600">Fetch, edit, and delete caption rows.</p>
+          <p className="text-sm text-slate-600">
+            {canManage
+              ? "Fetch, edit, and delete caption rows."
+              : "Read-only caption explorer for non-admin users."}
+          </p>
         </div>
         <button
           onClick={loadCaptions}
@@ -138,7 +146,7 @@ export function CaptionsManager() {
                 <th className="px-3 py-2">Caption</th>
                 <th className="px-3 py-2">Topic</th>
                 <th className="px-3 py-2">User</th>
-                <th className="px-3 py-2">Actions</th>
+                {canManage ? <th className="px-3 py-2">Actions</th> : null}
               </tr>
             </thead>
             <tbody>
@@ -149,26 +157,28 @@ export function CaptionsManager() {
                   <td className="px-3 py-3 font-mono text-xs text-slate-500">
                     {row.user_id ?? "-"}
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => openEditModal(row)}
-                        className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                        type="button"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(row.id)}
-                        className="inline-flex items-center gap-1 rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
-                        type="button"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
-                      </button>
-                    </div>
-                  </td>
+                  {canManage ? (
+                    <td className="px-3 py-3">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => openEditModal(row)}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                          type="button"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleDelete(row.id)}
+                          className="inline-flex items-center gap-1 rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                          type="button"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
@@ -176,7 +186,7 @@ export function CaptionsManager() {
         </div>
       )}
 
-      {editing ? (
+      {editing && canManage ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
           <div className="w-full max-w-xl rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
             <div className="mb-3 flex items-center justify-between">

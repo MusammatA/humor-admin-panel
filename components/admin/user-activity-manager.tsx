@@ -122,7 +122,12 @@ function userMatch(row: GenericRow, user: DirectoryUser) {
   return (user.id && rowUserIds.has(user.id)) || (user.email && rowEmail === user.email);
 }
 
-export function UserActivityManager() {
+type UserActivityManagerProps = {
+  canViewSensitive: boolean;
+  canMutate: boolean;
+};
+
+export function UserActivityManager({ canViewSensitive, canMutate }: UserActivityManagerProps) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [profiles, setProfiles] = useState<GenericRow[]>([]);
   const [images, setImages] = useState<GenericRow[]>([]);
@@ -464,27 +469,36 @@ export function UserActivityManager() {
                     <p>
                       <span className="font-semibold">Email:</span> {selectedUser.email || "N/A"}
                     </p>
-                    <p>
-                      <span className="font-semibold">Created Images:</span> {details.createdImages.length}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Created Captions:</span> {details.userCaptions.length}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Upvotes Cast:</span> {details.upVotes.length}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Downvotes Cast:</span> {details.downVotes.length}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Images Upvoted:</span> {details.upVotedImages.length}
-                    </p>
-                    <p>
-                      <span className="font-semibold">Images Downvoted:</span> {details.downVotedImages.length}
-                    </p>
+                    {canViewSensitive ? (
+                      <>
+                        <p>
+                          <span className="font-semibold">Created Images:</span> {details.createdImages.length}
+                        </p>
+                        <p>
+                          <span className="font-semibold">Created Captions:</span> {details.userCaptions.length}
+                        </p>
+                        <p>
+                          <span className="font-semibold">Upvotes Cast:</span> {details.upVotes.length}
+                        </p>
+                        <p>
+                          <span className="font-semibold">Downvotes Cast:</span> {details.downVotes.length}
+                        </p>
+                        <p>
+                          <span className="font-semibold">Images Upvoted:</span> {details.upVotedImages.length}
+                        </p>
+                        <p>
+                          <span className="font-semibold">Images Downvoted:</span> {details.downVotedImages.length}
+                        </p>
+                      </>
+                    ) : (
+                      <p className="md:col-span-2 text-slate-500">
+                        Detailed activity data is available to admins only.
+                      </p>
+                    )}
                   </div>
                 </div>
 
+                {canViewSensitive ? (
                 <div className="rounded-xl border border-slate-200 p-4">
                   <h4 className="text-sm font-semibold text-slate-900">Created Images + Captions</h4>
                   <p className="mb-3 text-xs text-slate-500">
@@ -502,14 +516,16 @@ export function UserActivityManager() {
                           <article key={imageId} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                               <p className="font-mono text-xs text-slate-700">Image ID: {imageId || "N/A"}</p>
-                              <button
-                                onClick={() => handleDeleteImage(image)}
-                                className="inline-flex items-center gap-1 rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
-                                type="button"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Delete Image
-                              </button>
+                              {canMutate ? (
+                                <button
+                                  onClick={() => handleDeleteImage(image)}
+                                  className="inline-flex items-center gap-1 rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                                  type="button"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  Delete Image
+                                </button>
+                              ) : null}
                             </div>
                             {imageUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element
@@ -548,7 +564,9 @@ export function UserActivityManager() {
                     </div>
                   )}
                 </div>
+                ) : null}
 
+                {canViewSensitive ? (
                 <div className="rounded-xl border border-slate-200 p-4">
                   <h4 className="text-sm font-semibold text-slate-900">Vote History (Detailed)</h4>
                   <p className="mb-3 text-xs text-slate-500">
@@ -579,13 +597,15 @@ export function UserActivityManager() {
                                 <td className="px-2 py-2 font-mono text-slate-600">{getCaptionImageId(caption ?? {}) || "N/A"}</td>
                                 <td className="px-2 py-2 text-slate-500">{getTimestamp(vote) || "N/A"}</td>
                                 <td className="px-2 py-2">
-                                  <button
-                                    onClick={() => handleDeleteVote(vote)}
-                                    className="rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
-                                    type="button"
-                                  >
-                                    Delete Vote
-                                  </button>
+                                  {canMutate ? (
+                                    <button
+                                      onClick={() => handleDeleteVote(vote)}
+                                      className="rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                                      type="button"
+                                    >
+                                      Delete Vote
+                                    </button>
+                                  ) : null}
                                 </td>
                               </tr>
                             );
@@ -595,6 +615,7 @@ export function UserActivityManager() {
                     </div>
                   )}
                 </div>
+                ) : null}
               </>
             )}
           </div>

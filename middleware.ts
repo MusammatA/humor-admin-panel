@@ -30,13 +30,8 @@ export async function middleware(req: NextRequest) {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
-    const { data: profile, error } = await supabase
-      .from("profiles")
-      .select("is_superadmin")
-      .eq("id", user.id)
-      .single();
-
-    if (error || profile?.is_superadmin !== true) {
+    const email = String(user.email || "").toLowerCase();
+    if (!email.endsWith("@columbia.edu")) {
       return NextResponse.redirect(new URL("/unauthorized", req.url));
     }
 
