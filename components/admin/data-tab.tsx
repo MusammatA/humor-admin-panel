@@ -193,6 +193,36 @@ function getProfileLabel(row: Row) {
   );
 }
 
+function parseUserIdFromImageUrl(url: string) {
+  if (!url) return "";
+  try {
+    const u = new URL(url);
+    const first = u.pathname.split("/").filter(Boolean)[0] ?? "";
+    return first;
+  } catch {
+    const match = String(url).match(/almostcrackd\.ai\/([^/]+)\//i);
+    return match?.[1] ?? "";
+  }
+}
+
+function getCaptionUploaderId(row: Row) {
+  return str(row, [
+    "uploader_user_id",
+    "uploaded_by_user_id",
+    "created_by_user_id",
+    "user_id",
+    "profile_id",
+  ]);
+}
+
+function getCaptionImageId(row: Row) {
+  return str(row, ["image_id", "imageId", "img_id", "image_uuid"]);
+}
+
+function getAnyImageUrl(row: Row) {
+  return str(row, ["image_url", "public_url", "cdn_url", "url"]);
+}
+
 function topCounts(counts: Map<string, number>, top = 20): BubbleItem[] {
   return Array.from(counts.entries())
     .filter(([, value]) => value > 0)
@@ -267,20 +297,14 @@ export function DataTab({ stats }: DataTabProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function fetchAllRows(
-    table: string,
-    columns: string,
-    pageSize: number,
-    maxPages: number,
-    maxRows: number,
-  ) {
+  async function fetchAllRows(table: string, pageSize: number, maxPages: number, maxRows: number) {
     if (!supabase) return [] as Row[];
     const all: Row[] = [];
     for (let page = 0; page < maxPages; page += 1) {
       if (all.length >= maxRows) break;
       const from = page * pageSize;
       const to = from + pageSize - 1;
-      const { data, error: fetchError } = await supabase.from(table).select(columns).range(from, to);
+      const { data, error: fetchError } = await supabase.from(table).select("*").range(from, to);
       if (fetchError) throw new Error(fetchError.message);
       const rows = (data ?? []) as Row[];
       if (!rows.length) break;
@@ -295,16 +319,10 @@ export function DataTab({ stats }: DataTabProps) {
     setLoading(true);
     try {
       const [captionRows, imageRows, voteRows, profileRows] = await Promise.all([
-        fetchAllRows(
-          "captions",
-          "id,caption_id,image_id,image_url,public_url,cdn_url,url,caption_text,text,content,caption,generated_caption,meme_text,output",
-          1000,
-          25,
-          25000,
-        ),
-        fetchAllRows("images", "id,image_id,user_id,uploader_user_id,uploaded_by_user_id,created_by_user_id,profile_id", 1000, 10, 10000),
-        fetchAllRows("caption_votes", "profile_id,user_id,voter_user_id,caption_id,vote_value", 1000, 20, 20000),
-        fetchAllRows("profiles", "id,full_name,username,email", 1000, 5, 5000),
+        fetchAllRows("captions", 1000, 25, 25000),
+        fetchAllRows("images", 1000, 10, 10000),
+        fetchAllRows("caption_votes", 1000, 20, 20000),
+        fetchAllRows("profiles", 1000, 5, 5000),
       ]);
       setCaptions(captionRows);
       setImages(imageRows);
@@ -350,9 +368,10 @@ export function DataTab({ stats }: DataTabProps) {
   const packedWords = useMemo(() => packBubbles(topWords), [topWords]);
 
   const topActiveUsers = useMemo(() => {
-    const uploadsByUser = new Map<string, number>();
+    const imageIdsByUser = new Map<string, Set<string>>();
     const votesByUser = new Map<string, number>();
     const labelByUser = new Map<string, string>();
+    const imageUserById = new Map<string, string>();
 
     for (const profile of profiles) {
       const id = getProfileId(profile);
@@ -361,11 +380,29 @@ export function DataTab({ stats }: DataTabProps) {
     }
 
     for (const image of images) {
-      const userId = getImageUploaderId(image);
+      const userId = getImageUploaderId(image) || parseUserIdFromImageUrl(getAnyImageUrl(image));
+      const imageId = str(image, ["id", "image_id"]);
       if (!userId) continue;
-      uploadsByUser.set(userId, (uploadsByUser.get(userId) ?? 0) + 1);
+      if (imageId) imageUserById.set(imageId, userId);
+      if (!imageIdsByUser.has(userId)) imageIdsByUser.set(userId, new Set());
+      if (imageId) imageIdsByUser.get(userId)!.add(imageId);
       if (!labelByUser.has(userId)) {
         labelByUser.set(userId, `User ${userId.slice(0, 8)}`);
+      }
+    }
+
+    for (const caption of captions) {
+      const imageId = getCaptionImageId(caption);
+      const captionUserId = getCaptionUploaderId(caption) || parseUserIdFromImageUrl(getAnyImageUrl(caption));
+      const userId = captionUserId || (imageId ? imageUserById.get(imageId) ?? "" : "");
+      if (!userId) continue;
+      if (!imageIdsByUser.has(userId)) imageIdsByUser.set(userId, new Set());
+      if (imageId) imageIdsByUser.get(userId)!.add(imageId);
+      if (!labelByUser.has(userId)) {
+        labelByUser.set(userId, `User ${userId.slice(0, 8)}`);
+      }
+      if (imageId && !imageUserById.has(imageId)) {
+        imageUserById.set(imageId, userId);
       }
     }
 
@@ -378,10 +415,10 @@ export function DataTab({ stats }: DataTabProps) {
       }
     }
 
-    const userIds = new Set([...uploadsByUser.keys(), ...votesByUser.keys()]);
+    const userIds = new Set([...imageIdsByUser.keys(), ...votesByUser.keys()]);
     const ranked = Array.from(userIds)
       .map((userId) => {
-        const uploads = uploadsByUser.get(userId) ?? 0;
+        const uploads = imageIdsByUser.get(userId)?.size ?? 0;
         const voteCount = votesByUser.get(userId) ?? 0;
         return {
           userId,
