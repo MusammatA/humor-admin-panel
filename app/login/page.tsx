@@ -14,31 +14,12 @@ async function fetchAdminStatusWithTimeout(ms: number) {
   }
 }
 
-async function fetchAdminEmailAllowedWithTimeout(email: string, ms: number) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  try {
-    const encoded = encodeURIComponent(email);
-    return await fetch(`/api/admin-email-allowed?email=${encoded}`, {
-      cache: "no-store",
-      signal: controller.signal,
-    });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-function isValidEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
 export default function LoginPage() {
   const router = useRouter();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [checkingSession, setCheckingSession] = useState(true);
   const [signinError, setSigninError] = useState("");
   const [signingIn, setSigningIn] = useState(false);
-  const [adminEmail, setAdminEmail] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -100,34 +81,9 @@ export default function LoginPage() {
       alert("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
       return;
     }
-    const normalizedEmail = adminEmail.trim().toLowerCase();
-    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
-      setSigninError("Enter a valid admin email.");
-      return;
-    }
 
     setSigninError("");
     setSigningIn(true);
-
-    try {
-      const allowedRes = await fetchAdminEmailAllowedWithTimeout(normalizedEmail, 10000);
-      const allowedPayload = await allowedRes.json().catch(() => ({}));
-      const allowed = allowedPayload?.allowed === true;
-      const indeterminate = allowedPayload?.indeterminate === true;
-      if (!allowed) {
-        setSigningIn(false);
-        if (indeterminate) {
-          setSigninError(String(allowedPayload?.error || "Could not verify admin email. Try again."));
-          return;
-        }
-        setSigninError("This email does not have superadmin access.");
-        return;
-      }
-    } catch (_err) {
-      setSigningIn(false);
-      setSigninError("Could not verify admin email. Try again.");
-      return;
-    }
 
     await supabase.auth.signOut();
 
@@ -139,7 +95,6 @@ export default function LoginPage() {
         skipBrowserRedirect: true,
         queryParams: {
           prompt: "select_account",
-          login_hint: normalizedEmail,
         },
       },
     });
@@ -185,30 +140,8 @@ export default function LoginPage() {
           </p>
         ) : null}
         <p style={{ marginTop: 16, fontSize: 18, color: "#334155" }}>
-          Enter your admin email, then continue with Google sign-in.
+          Sign in with Google. Access is only granted to users with <code>profiles.is_superadmin = true</code>.
         </p>
-        <label
-          htmlFor="admin-email"
-          style={{ marginTop: 12, display: "block", fontSize: 12, fontWeight: 700, color: "#64748b" }}
-        >
-          Admin Email
-        </label>
-        <input
-          id="admin-email"
-          type="email"
-          value={adminEmail}
-          onChange={(event) => setAdminEmail(event.target.value)}
-          placeholder="your-admin-email@domain.com"
-          style={{
-            marginTop: 8,
-            width: "100%",
-            maxWidth: 420,
-            border: "1px solid #cbd5e1",
-            borderRadius: 10,
-            padding: "10px 12px",
-            fontSize: 16,
-          }}
-        />
         <button
           onClick={handleLogin}
           disabled={signingIn}

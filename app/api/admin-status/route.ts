@@ -3,7 +3,6 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../../lib/supabase-config";
-import { isAllowlistedAdminEmail } from "../../../lib/admin-auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -51,10 +50,6 @@ export async function GET() {
   }
 
   const userEmail = String(user.email || "").trim();
-  if (!isAllowlistedAdminEmail(userEmail)) {
-    return NextResponse.json({ authenticated: true, isSuperadmin: false, email: userEmail }, { status: 200 });
-  }
-
   let isSuperadmin = await isSuperadminByUserId(supabase, String(user.id || "").trim());
 
   // Fallback where session profile reads are blocked by strict RLS.

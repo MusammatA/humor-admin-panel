@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./lib/supabase-config";
-import { isAllowlistedAdminEmail } from "./lib/admin-auth";
 
 function hasSuperadminById(row: { id?: unknown; is_superadmin?: unknown } | null, expectedId: string): boolean {
   if (!row) return false;
@@ -40,17 +39,6 @@ export async function middleware(req: NextRequest) {
 
   if (userError || !user) {
     return NextResponse.redirect(new URL("/login", req.url));
-  }
-
-  const userEmail = String(user.email || "").trim();
-  if (!isAllowlistedAdminEmail(userEmail)) {
-    const denied = NextResponse.redirect(new URL("/login?error=not_superadmin", req.url));
-    req.cookies.getAll().forEach(({ name }) => {
-      if (name.startsWith("sb-")) {
-        denied.cookies.set(name, "", { path: "/", expires: new Date(0) });
-      }
-    });
-    return denied;
   }
 
   const userId = String(user.id || "").trim();
