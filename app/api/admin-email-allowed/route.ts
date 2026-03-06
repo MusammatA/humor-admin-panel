@@ -15,6 +15,18 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function GET(request: NextRequest) {
   const email = normalizeEmail(request.nextUrl.searchParams.get("email"));
   if (!email || !isValidEmail(email)) {
@@ -32,19 +44,39 @@ export async function GET(request: NextRequest) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("email, is_superadmin")
-    .eq("is_superadmin", true)
-    .limit(2000);
+  let data: Array<{ is_superadmin?: unknown; email?: unknown }> | null = null;
+  let error: { message?: string } | null = null;
+
+  try {
+    // Constant-time lookup by email (instead of scanning many superadmin rows).
+    const result = await withTimeout(
+      (async () =>
+        await supabase
+          .from("profiles")
+          .select("email, is_superadmin")
+          .ilike("email", email)
+          .limit(1))(),
+      6000,
+      "admin email check",
+    );
+    data = (result.data ?? null) as Array<{ is_superadmin?: unknown; email?: unknown }> | null;
+    error = (result.error ?? null) as { message?: string } | null;
+  } catch (timeoutError) {
+    return NextResponse.json(
+      {
+        allowed: false,
+        error: timeoutError instanceof Error ? timeoutError.message : "Admin check timed out.",
+      },
+      { status: 200 },
+    );
+  }
 
   if (error) {
     return NextResponse.json({ allowed: false, error: error.message }, { status: 200 });
   }
 
-  const allowed = Array.isArray(data)
-    ? data.some((row) => normalizeEmail(row?.email) === email && row?.is_superadmin === true)
-    : false;
+  const row = Array.isArray(data) && data.length ? data[0] : null;
+  const allowed = Boolean(row && normalizeEmail(row.email) === email && row.is_superadmin === true);
 
   const response = NextResponse.json({ allowed }, { status: 200 });
   response.headers.set("Cache-Control", "no-store, max-age=0");

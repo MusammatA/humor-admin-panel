@@ -43,14 +43,26 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   const roleRequestSeq = useRef(0);
 
   async function precheckAdminEmail(email: string) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
     try {
       const res = await fetch(`/api/admin-email-allowed?email=${encodeURIComponent(email)}`, {
         cache: "no-store",
+        signal: controller.signal,
       });
       const payload = await res.json().catch(() => ({}));
-      return payload?.allowed === true;
-    } catch (_err) {
-      return false;
+      return {
+        allowed: payload?.allowed === true,
+        error: typeof payload?.error === "string" ? payload.error : "",
+      };
+    } catch (err) {
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      return {
+        allowed: false,
+        error: isAbort ? "Admin check timed out. Please try again." : "Admin check failed. Please try again.",
+      };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -130,20 +142,19 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
 
     setRoleError(null);
     setAdminLoginLoading(true);
-    const allowed = await precheckAdminEmail(emailToCheck);
-    if (!allowed) {
-      setRoleError("Sorry, you don't have Supabase access.");
+    const precheck = await precheckAdminEmail(emailToCheck);
+    if (!precheck.allowed) {
+      setRoleError(precheck.error || "Sorry, you don't have Supabase access.");
       setActiveTab("data");
       setAdminLoginLoading(false);
       return;
     }
 
-    // Force Google account chooser so a viewer can switch into an admin account.
-    await supabase.auth.signOut();
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        skipBrowserRedirect: true,
         queryParams: {
           prompt: "select_account",
           login_hint: emailToCheck,
@@ -153,7 +164,14 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
     if (error) {
       setRoleError(error.message);
       setAdminLoginLoading(false);
+      return;
     }
+    if (data?.url) {
+      window.location.assign(data.url);
+      return;
+    }
+    setRoleError("Could not start Google sign-in. Please try again.");
+    setAdminLoginLoading(false);
   }
 
   const canEdit = !roleLoading && isAdmin;

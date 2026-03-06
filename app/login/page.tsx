@@ -13,14 +13,26 @@ export default function LoginPage() {
   const [checkingAdminEmail, setCheckingAdminEmail] = useState(false);
 
   async function precheckAdminEmail(email: string) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
     try {
       const res = await fetch(`/api/admin-email-allowed?email=${encodeURIComponent(email)}`, {
         cache: "no-store",
+        signal: controller.signal,
       });
       const payload = await res.json().catch(() => ({}));
-      return payload?.allowed === true;
-    } catch (_err) {
-      return false;
+      return {
+        allowed: payload?.allowed === true,
+        error: typeof payload?.error === "string" ? payload.error : "",
+      };
+    } catch (err) {
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      return {
+        allowed: false,
+        error: isAbort ? "Admin check timed out. Please try again." : "Admin check failed. Please try again.",
+      };
+    } finally {
+      clearTimeout(timer);
     }
   }
 
@@ -66,17 +78,18 @@ export default function LoginPage() {
 
     setSigninError("");
     setCheckingAdminEmail(true);
-    const allowed = await precheckAdminEmail(normalizedEmail);
-    if (!allowed) {
-      setSigninError("Sorry, you don't have Supabase access.");
+    const precheck = await precheckAdminEmail(normalizedEmail);
+    if (!precheck.allowed) {
+      setSigninError(precheck.error || "Sorry, you don't have Supabase access.");
       setCheckingAdminEmail(false);
       return;
     }
 
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        skipBrowserRedirect: true,
         queryParams: {
           prompt: "select_account",
           login_hint: normalizedEmail,
@@ -87,7 +100,14 @@ export default function LoginPage() {
     if (error) {
       setSigninError(error.message);
       setCheckingAdminEmail(false);
+      return;
     }
+    if (data?.url) {
+      window.location.assign(data.url);
+      return;
+    }
+    setSigninError("Could not start Google sign-in. Please try again.");
+    setCheckingAdminEmail(false);
   };
 
   return (
