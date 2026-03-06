@@ -143,3 +143,50 @@ html.dark .border-slate-200,
 html.dark .border-slate-300 {
   border-color: #334155 !important;
 }
+
+.login-cinema-orb {
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(58px);
+  pointer-events: none;
+  animation: cinemaDrift 8s ease-in-out infinite;
+}
+
+.login-cinema-orb-a {
+  width: 360px;
+  height: 360px;
+  left: -70px;
+  top: 80px;
+  background: radial-gradient(circle at center, rgba(226, 95, 52, 0.35), rgba(226, 95, 52, 0.02));
+}
+
+.login-cinema-orb-b {
+  width: 420px;
+  height: 420px;
+  right: -120px;
+  top: 200px;
+  background: radial-gradient(circle at center, rgba(78, 169, 106, 0.3), rgba(78, 169, 106, 0.01));
+  animation-delay: 1.4s;
+}
+
+.login-cinema-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to bottom, rgba(31, 45, 47, 0.04) 1px, transparent 1px),
+    linear-gradient(to right, rgba(31, 45, 47, 0.04) 1px, transparent 1px);
+  background-size: 36px 36px, 36px 36px;
+  opacity: 0.35;
+  mask-image: radial-gradient(circle at 50% 20%, black 42%, transparent 90%);
+}
+
+@keyframes cinemaDrift {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0) scale(1.04);
+  }
+}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Shield, Sparkles } from "lucide-react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
 
 async function fetchAdminStatusWithTimeout(ms: number) {
@@ -128,40 +129,64 @@ export default function LoginPage() {
   };
 
   return (
-    <main style={{ minHeight: "100vh", padding: 24, fontFamily: "sans-serif" }}>
-      <div style={{ maxWidth: 680, margin: "0 auto", border: "1px solid #ddd", borderRadius: 16, padding: 24 }}>
-        <h1 style={{ margin: 0, fontSize: 40, lineHeight: 1.1 }}>Admin Login</h1>
-        {checkingSession ? (
-          <p style={{ marginTop: 12, fontSize: 14, color: "#64748b" }}>Checking existing session...</p>
-        ) : null}
-        {signinError ? (
-          <p style={{ marginTop: 12, fontSize: 14, color: "#b91c1c" }}>
-            Sign-in failed ({signinError}). Try again.
+    <main className="relative min-h-screen overflow-hidden px-6 py-10 sm:px-10">
+      <div className="login-cinema-orb login-cinema-orb-a" aria-hidden />
+      <div className="login-cinema-orb login-cinema-orb-b" aria-hidden />
+      <div className="login-cinema-grid" aria-hidden />
+
+      <section className="relative mx-auto grid w-full max-w-6xl gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+        <div className="rounded-2xl border border-slate-200 bg-white/85 p-8 shadow-lg backdrop-blur-sm">
+          <p className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
+            <Sparkles className="h-3.5 w-3.5" />
+            Superadmin Portal
           </p>
-        ) : null}
-        <p style={{ marginTop: 16, fontSize: 18, color: "#334155" }}>
-          Sign in with Google. Access is only granted to users with <code>profiles.is_superadmin = true</code>.
-        </p>
-        <button
-          onClick={handleLogin}
-          disabled={signingIn}
-          style={{
-            marginTop: 20,
-            border: "none",
-            borderRadius: 12,
-            padding: "12px 18px",
-            background: "#0f172a",
-            color: "white",
-            fontSize: 18,
-            fontWeight: 700,
-            cursor: "pointer",
-            opacity: signingIn ? 0.7 : 1,
-          }}
-          type="button"
-        >
-          {signingIn ? "Redirecting to Google..." : "Sign in with Google"}
-        </button>
-      </div>
+          <h1 className="mt-4 text-5xl font-bold leading-[0.95] text-slate-900 sm:text-6xl">Admin Login</h1>
+          <p className="mt-4 max-w-2xl text-lg leading-relaxed text-slate-700">
+            Secure access for Humor Study administrators. Only authenticated Google users with
+            <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 text-base">profiles.is_superadmin = true</code>
+            can enter this dashboard.
+          </p>
+          <div className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2">Google OAuth required</div>
+            <div className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2">Server-side role check</div>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-slate-200 bg-white/92 p-7 shadow-lg backdrop-blur-sm">
+          <div className="flex items-center gap-2 text-slate-700">
+            <Shield className="h-5 w-5" />
+            <h2 className="text-xl font-semibold text-slate-900">Sign In</h2>
+          </div>
+
+          {checkingSession ? (
+            <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              Checking existing session...
+            </p>
+          ) : null}
+          {signinError ? (
+            <p className="mt-4 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+              Sign-in failed ({signinError}). Try again.
+            </p>
+          ) : null}
+
+          <button
+            onClick={handleLogin}
+            disabled={signingIn}
+            className="mt-6 inline-flex w-full items-center justify-center rounded-xl px-5 py-4 text-lg font-extrabold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+            style={{
+              background: "linear-gradient(135deg, var(--brand), var(--brand-2))",
+              boxShadow: "0 14px 28px rgba(39, 47, 56, 0.22)",
+            }}
+            type="button"
+          >
+            {signingIn ? "Redirecting to Google..." : "Sign in with Google"}
+          </button>
+
+          <p className="mt-4 text-center text-xs text-slate-500">
+            You will be redirected back to this website after Google authentication.
+          </p>
+        </div>
+      </section>
     </main>
   );
 }
