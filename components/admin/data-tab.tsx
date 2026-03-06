@@ -265,31 +265,46 @@ export function DataTab({ stats }: DataTabProps) {
   const [votes, setVotes] = useState<Row[]>([]);
   const [profiles, setProfiles] = useState<Row[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  async function fetchAllRows(table: string, pageSize: number, maxPages: number) {
+  async function fetchAllRows(
+    table: string,
+    columns: string,
+    pageSize: number,
+    maxPages: number,
+    maxRows: number,
+  ) {
     if (!supabase) return [] as Row[];
     const all: Row[] = [];
     for (let page = 0; page < maxPages; page += 1) {
+      if (all.length >= maxRows) break;
       const from = page * pageSize;
       const to = from + pageSize - 1;
-      const { data, error: fetchError } = await supabase.from(table).select("*").range(from, to);
+      const { data, error: fetchError } = await supabase.from(table).select(columns).range(from, to);
       if (fetchError) throw new Error(fetchError.message);
       const rows = (data ?? []) as Row[];
       if (!rows.length) break;
       all.push(...rows);
       if (rows.length < pageSize) break;
     }
-    return all;
+    return all.slice(0, maxRows);
   }
 
   async function load() {
     if (!supabase) return;
+    setLoading(true);
     try {
       const [captionRows, imageRows, voteRows, profileRows] = await Promise.all([
-        fetchAllRows("captions", 2000, 200),
-        fetchAllRows("images", 1000, 120),
-        fetchAllRows("caption_votes", 3000, 200),
-        fetchAllRows("profiles", 1000, 120),
+        fetchAllRows(
+          "captions",
+          "id,caption_id,image_id,image_url,public_url,cdn_url,url,caption_text,text,content,caption,generated_caption,meme_text,output",
+          1000,
+          25,
+          25000,
+        ),
+        fetchAllRows("images", "id,image_id,user_id,uploader_user_id,uploaded_by_user_id,created_by_user_id,profile_id", 1000, 10, 10000),
+        fetchAllRows("caption_votes", "profile_id,user_id,voter_user_id,caption_id,vote_value", 1000, 20, 20000),
+        fetchAllRows("profiles", "id,full_name,username,email", 1000, 5, 5000),
       ]);
       setCaptions(captionRows);
       setImages(imageRows);
@@ -298,6 +313,8 @@ export function DataTab({ stats }: DataTabProps) {
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load data.");
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -390,6 +407,7 @@ export function DataTab({ stats }: DataTabProps) {
         <p className="mt-2 text-sm text-slate-600">
           Top 20 caption words by frequency across all loaded caption rows.
         </p>
+        {loading ? <p className="mt-1 text-xs text-slate-500">Loading data snapshot...</p> : null}
         {error || stats.error ? (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
             {error || stats.error}

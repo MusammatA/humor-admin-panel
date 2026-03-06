@@ -3,7 +3,6 @@ import { AdminTabsShell } from "../../components/admin/admin-tabs-shell";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../lib/supabase-config";
 
 type CaptionRow = {
-  user_id: string | null;
   topic?: string | null;
   caption_text?: string | null;
   text?: string | null;
@@ -48,7 +47,7 @@ async function getDashboardStats() {
 
   const [imagesRes, captionsRes] = await Promise.all([
     supabase.from("images").select("*", { count: "exact", head: true }),
-    supabase.from("captions").select("user_id, topic, caption_text, text"),
+    supabase.from("captions").select("topic, caption_text, text").limit(20000),
   ]);
 
   if (imagesRes.error || captionsRes.error) {
@@ -64,39 +63,13 @@ async function getDashboardStats() {
   const captions = (captionsRes.data ?? []) as CaptionRow[];
   const totalImages = imagesRes.count ?? 0;
 
-  const userCounts = new Map<string, number>();
   const topicCounts = new Map<string, number>();
 
   for (const caption of captions) {
-    if (caption.user_id) {
-      userCounts.set(caption.user_id, (userCounts.get(caption.user_id) ?? 0) + 1);
-    }
-
     const topic = inferTopic(caption);
     if (topic) {
       topicCounts.set(topic, (topicCounts.get(topic) ?? 0) + 1);
     }
-  }
-
-  let topUserId: string | null = null;
-  let mostActiveCount = 0;
-  for (const [userId, count] of userCounts.entries()) {
-    if (count > mostActiveCount) {
-      topUserId = userId;
-      mostActiveCount = count;
-    }
-  }
-
-  let mostActiveUser = "No captions yet";
-  if (topUserId) {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("username, full_name, email")
-      .eq("id", topUserId)
-      .maybeSingle();
-
-    mostActiveUser =
-      profile?.username ?? profile?.full_name ?? profile?.email ?? `${topUserId.slice(0, 8)}...`;
   }
 
   const topTopics = Array.from(topicCounts.entries())
@@ -106,8 +79,8 @@ async function getDashboardStats() {
 
   return {
     totalImages,
-    mostActiveUser,
-    mostActiveCount,
+    mostActiveUser: "Calculated in Data tab",
+    mostActiveCount: 0,
     topTopics,
     error: null as string | null,
   };
