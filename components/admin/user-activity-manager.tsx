@@ -205,10 +205,11 @@ export function UserActivityManager() {
 
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return directory;
-    return directory.filter((user) =>
-      `${user.name} ${user.email} ${user.id}`.toLowerCase().includes(q)
+    const columbiaUsers = directory.filter((user) =>
+      user.email.toLowerCase().endsWith("@columbia.edu")
     );
+    if (!q) return columbiaUsers;
+    return columbiaUsers.filter((user) => user.email.toLowerCase().includes(q));
   }, [directory, query]);
 
   useEffect(() => {
@@ -395,7 +396,7 @@ export function UserActivityManager() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search by name, email, or user ID"
+          placeholder="Search Columbia email (example: mea2222@columbia.edu)"
           className="w-full border-none bg-transparent text-sm outline-none"
         />
       </div>
