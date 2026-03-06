@@ -6,8 +6,6 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../../lib/supabase-config";
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const tokenHash = requestUrl.searchParams.get("token_hash");
-  const type = requestUrl.searchParams.get("type");
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return NextResponse.redirect(new URL("/unauthorized", request.url));
@@ -33,14 +31,10 @@ export async function GET(request: NextRequest) {
     if (!error) return response;
   }
 
-  if (tokenHash && type) {
-    const otpType = type === "signup" ? "signup" : "magiclink";
-    const { error } = await supabase.auth.verifyOtp({
-      token_hash: tokenHash,
-      type: otpType,
-    });
-    if (!error) return response;
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (!sessionError && sessionData.session) {
+    return response;
   }
 
-  return NextResponse.redirect(new URL("/login?error=auth_callback_failed", request.url));
+  return NextResponse.redirect(new URL("/login?error=signin_failed", request.url));
 }
