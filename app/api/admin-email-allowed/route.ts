@@ -28,8 +28,9 @@ async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): P
 }
 
 export async function GET(request: NextRequest) {
-  const email = normalizeEmail(request.nextUrl.searchParams.get("email"));
-  if (!email || !isValidEmail(email)) {
+  const rawEmail = String(request.nextUrl.searchParams.get("email") || "").trim();
+  const normalizedEmail = normalizeEmail(rawEmail);
+  if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
     return NextResponse.json({ allowed: false, error: "Invalid email." }, { status: 200 });
   }
 
@@ -44,39 +45,71 @@ export async function GET(request: NextRequest) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  let data: Array<{ is_superadmin?: unknown; email?: unknown }> | null = null;
-  let error: { message?: string } | null = null;
+  // Prefer exact lookups to avoid slow table scans.
+  const candidates = Array.from(
+    new Set(
+      [rawEmail, normalizedEmail]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  );
 
-  try {
-    // Constant-time lookup by email (instead of scanning many superadmin rows).
-    const result = await withTimeout(
-      (async () =>
-        await supabase
-          .from("profiles")
-          .select("email, is_superadmin")
-          .ilike("email", email)
-          .limit(1))(),
-      6000,
-      "admin email check",
-    );
-    data = (result.data ?? null) as Array<{ is_superadmin?: unknown; email?: unknown }> | null;
-    error = (result.error ?? null) as { message?: string } | null;
-  } catch (timeoutError) {
+  let hadTimeout = false;
+  let hadQueryError = false;
+  let queryErrorMessage = "";
+  let allowed = false;
+
+  for (const candidate of candidates) {
+    try {
+      const result = await withTimeout(
+        (async () =>
+          await supabase
+            .from("profiles")
+            .select("email, is_superadmin")
+            .eq("email", candidate)
+            .maybeSingle())(),
+        2500,
+        "admin email check",
+      );
+
+      if (result.error) {
+        hadQueryError = true;
+        queryErrorMessage = result.error.message || queryErrorMessage;
+        continue;
+      }
+
+      if (result.data && result.data.is_superadmin === true) {
+        allowed = true;
+        break;
+      }
+    } catch (timeoutError) {
+      hadTimeout = true;
+      queryErrorMessage =
+        timeoutError instanceof Error ? timeoutError.message : "Admin check timed out.";
+    }
+  }
+
+  if (!allowed && hadTimeout) {
     return NextResponse.json(
       {
         allowed: false,
-        error: timeoutError instanceof Error ? timeoutError.message : "Admin check timed out.",
+        indeterminate: true,
+        error: queryErrorMessage || "Admin check timed out.",
       },
       { status: 200 },
     );
   }
 
-  if (error) {
-    return NextResponse.json({ allowed: false, error: error.message }, { status: 200 });
+  if (!allowed && hadQueryError) {
+    return NextResponse.json(
+      {
+        allowed: false,
+        indeterminate: true,
+        error: queryErrorMessage || "Admin check unavailable.",
+      },
+      { status: 200 },
+    );
   }
-
-  const row = Array.isArray(data) && data.length ? data[0] : null;
-  const allowed = Boolean(row && normalizeEmail(row.email) === email && row.is_superadmin === true);
 
   const response = NextResponse.json({ allowed }, { status: 200 });
   response.headers.set("Cache-Control", "no-store, max-age=0");

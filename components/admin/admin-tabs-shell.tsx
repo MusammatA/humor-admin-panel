@@ -53,13 +53,15 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       const payload = await res.json().catch(() => ({}));
       return {
         allowed: payload?.allowed === true,
+        indeterminate: payload?.indeterminate === true,
         error: typeof payload?.error === "string" ? payload.error : "",
       };
     } catch (err) {
       const isAbort = err instanceof Error && err.name === "AbortError";
       return {
         allowed: false,
-        error: isAbort ? "Admin check timed out. Please try again." : "Admin check failed. Please try again.",
+        indeterminate: true,
+        error: isAbort ? "Admin check timed out." : "Admin check failed.",
       };
     } finally {
       clearTimeout(timer);
@@ -143,11 +145,14 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
     setRoleError(null);
     setAdminLoginLoading(true);
     const precheck = await precheckAdminEmail(emailToCheck);
-    if (!precheck.allowed) {
+    if (!precheck.allowed && !precheck.indeterminate) {
       setRoleError(precheck.error || "Sorry, you don't have Supabase access.");
       setActiveTab("data");
       setAdminLoginLoading(false);
       return;
+    }
+    if (!precheck.allowed && precheck.indeterminate) {
+      setRoleError("Admin pre-check timed out. Continuing to sign-in; final role check runs after login.");
     }
 
     const { data, error } = await supabase.auth.signInWithOAuth({
