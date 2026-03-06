@@ -87,14 +87,20 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
 
     const superadmin = Boolean(profile?.is_superadmin);
     setIsAdmin(superadmin);
+    const hasAdminIntent = typeof window !== "undefined" && sessionStorage.getItem(ADMIN_MODE_INTENT_KEY) === "1";
     if (!superadmin) {
       setAdminModeEnabled(false);
+      // If user explicitly used Admin Login but lacks superadmin, reject that sign-in.
+      if (hasAdminIntent) {
+        await supabase.auth.signOut();
+        setCurrentEmail("");
+        setRoleError("Admin login denied: this Google account is not a superadmin in Supabase.");
+      }
       if (typeof window !== "undefined") {
         sessionStorage.removeItem(ADMIN_MODE_INTENT_KEY);
       }
     } else if (typeof window !== "undefined") {
-      const intent = sessionStorage.getItem(ADMIN_MODE_INTENT_KEY) === "1";
-      setAdminModeEnabled(intent);
+      setAdminModeEnabled(hasAdminIntent);
     }
     setRoleLoading(false);
   }
