@@ -15,16 +15,41 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
-  });
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timer) clearTimeout(timer);
+function readAdminAllowlist(): Set<string> {
+  const raw = String(process.env.ADMIN_ALLOWED_EMAILS || "");
+  const normalized = raw
+    .split(",")
+    .map((item) => normalizeEmail(item))
+    .filter(Boolean);
+  return new Set(normalized);
+}
+
+function isEmailInAllowlist(email: string): boolean {
+  const allowlist = readAdminAllowlist();
+  if (!allowlist.size) return true;
+  return allowlist.has(normalizeEmail(email));
+}
+
+function hasSuperadminEmailMatch(
+  rows: Array<{ email?: unknown; is_superadmin?: unknown }>,
+  normalizedEmail: string,
+): boolean {
+  return rows.some((row) => normalizeEmail(row?.email) === normalizedEmail && row?.is_superadmin === true);
+}
+
+async function querySuperadminByEmail(client: any, rawEmail: string, normalizedEmail: string): Promise<boolean> {
+  const candidates = Array.from(new Set([rawEmail, normalizedEmail].filter(Boolean)));
+  for (const candidate of candidates) {
+    const { data, error } = await client
+      .from("profiles")
+      .select("email, is_superadmin")
+      .eq("email", candidate)
+      .limit(10);
+    if (!error && Array.isArray(data) && hasSuperadminEmailMatch(data, normalizedEmail)) {
+      return true;
+    }
   }
+  return false;
 }
 
 export async function GET(request: NextRequest) {
@@ -41,74 +66,35 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  if (!isEmailInAllowlist(normalizedEmail)) {
+    return NextResponse.json({ allowed: false }, { status: 200 });
+  }
 
-  // Prefer exact lookups to avoid slow table scans.
-  const candidates = Array.from(
-    new Set(
-      [rawEmail, normalizedEmail]
-        .map((value) => String(value || "").trim())
-        .filter(Boolean),
-    ),
-  );
-
-  let hadTimeout = false;
-  let hadQueryError = false;
-  let queryErrorMessage = "";
   let allowed = false;
+  let queryErrorMessage = "";
 
-  for (const candidate of candidates) {
+  try {
+    const sessionlessClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    allowed = await querySuperadminByEmail(sessionlessClient, rawEmail, normalizedEmail);
+  } catch (error) {
+    queryErrorMessage = error instanceof Error ? error.message : "Admin check failed.";
+  }
+
+  if (!allowed && process.env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
-      const result = await withTimeout(
-        (async () =>
-          await supabase
-            .from("profiles")
-            .select("email, is_superadmin")
-            .eq("email", candidate)
-            .maybeSingle())(),
-        2500,
-        "admin email check",
-      );
-
-      if (result.error) {
-        hadQueryError = true;
-        queryErrorMessage = result.error.message || queryErrorMessage;
-        continue;
-      }
-
-      if (result.data && result.data.is_superadmin === true) {
-        allowed = true;
-        break;
-      }
-    } catch (timeoutError) {
-      hadTimeout = true;
-      queryErrorMessage =
-        timeoutError instanceof Error ? timeoutError.message : "Admin check timed out.";
+      const serviceClient = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      allowed = await querySuperadminByEmail(serviceClient, rawEmail, normalizedEmail);
+    } catch (error) {
+      queryErrorMessage = error instanceof Error ? error.message : "Admin check failed.";
     }
   }
 
-  if (!allowed && hadTimeout) {
-    return NextResponse.json(
-      {
-        allowed: false,
-        indeterminate: true,
-        error: queryErrorMessage || "Admin check timed out.",
-      },
-      { status: 200 },
-    );
-  }
-
-  if (!allowed && hadQueryError) {
-    return NextResponse.json(
-      {
-        allowed: false,
-        indeterminate: true,
-        error: queryErrorMessage || "Admin check unavailable.",
-      },
-      { status: 200 },
-    );
+  if (!allowed && queryErrorMessage) {
+    return NextResponse.json({ allowed: false, indeterminate: true, error: queryErrorMessage }, { status: 200 });
   }
 
   const response = NextResponse.json({ allowed }, { status: 200 });
