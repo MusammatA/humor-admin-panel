@@ -38,6 +38,20 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   const [currentEmail, setCurrentEmail] = useState("");
   const [roleLoading, setRoleLoading] = useState(true);
   const [roleError, setRoleError] = useState<string | null>(null);
+  const [adminLoginEmail, setAdminLoginEmail] = useState("");
+  const [adminLoginLoading, setAdminLoginLoading] = useState(false);
+
+  async function precheckAdminEmail(email: string) {
+    try {
+      const res = await fetch(`/api/admin-email-allowed?email=${encodeURIComponent(email)}`, {
+        cache: "no-store",
+      });
+      const payload = await res.json().catch(() => ({}));
+      return payload?.allowed === true;
+    } catch (_err) {
+      return false;
+    }
+  }
 
   async function loadRole() {
     if (!supabase) {
@@ -95,7 +109,22 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
 
   async function handleAdminLogin() {
     if (!supabase) return;
+    const emailToCheck = adminLoginEmail.trim().toLowerCase();
+    if (!emailToCheck) {
+      setRoleError("Enter your admin email first.");
+      return;
+    }
+
     setRoleError(null);
+    setAdminLoginLoading(true);
+    const allowed = await precheckAdminEmail(emailToCheck);
+    if (!allowed) {
+      setRoleError("Sorry, you don't have Supabase access.");
+      setActiveTab("data");
+      setAdminLoginLoading(false);
+      return;
+    }
+
     // Force Google account chooser so a viewer can switch into an admin account.
     await supabase.auth.signOut();
     const { error } = await supabase.auth.signInWithOAuth({
@@ -104,11 +133,13 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
         redirectTo: `${window.location.origin}/auth/callback`,
         queryParams: {
           prompt: "select_account",
+          login_hint: emailToCheck,
         },
       },
     });
     if (error) {
       setRoleError(error.message);
+      setAdminLoginLoading(false);
     }
   }
 
@@ -194,14 +225,27 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
               Anyone can view this dashboard. Editing actions require a Google sign-in account that is marked
               <code> is_superadmin = true </code> in Supabase profiles.
             </p>
+            <div className="mt-3">
+              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Admin Email
+              </label>
+              <input
+                value={adminLoginEmail}
+                onChange={(event) => setAdminLoginEmail(event.target.value)}
+                type="email"
+                placeholder="your-admin-email@domain.com"
+                className="w-full max-w-md rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none focus:border-slate-900"
+              />
+            </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={handleAdminLogin}
+                disabled={adminLoginLoading}
                 className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white"
               >
                 <LogIn className="h-4 w-4" />
-                Admin Login (Google)
+                {adminLoginLoading ? "Checking Admin Access..." : "Admin Login (Google)"}
               </button>
             </div>
           </section>

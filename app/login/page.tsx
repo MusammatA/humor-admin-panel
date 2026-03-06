@@ -9,6 +9,20 @@ export default function LoginPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [checkingSession, setCheckingSession] = useState(true);
   const [signinError, setSigninError] = useState("");
+  const [adminEmail, setAdminEmail] = useState("");
+  const [checkingAdminEmail, setCheckingAdminEmail] = useState(false);
+
+  async function precheckAdminEmail(email: string) {
+    try {
+      const res = await fetch(`/api/admin-email-allowed?email=${encodeURIComponent(email)}`, {
+        cache: "no-store",
+      });
+      const payload = await res.json().catch(() => ({}));
+      return payload?.allowed === true;
+    } catch (_err) {
+      return false;
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -44,16 +58,35 @@ export default function LoginPage() {
       alert("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
       return;
     }
+    const normalizedEmail = adminEmail.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setSigninError("Enter your admin email first.");
+      return;
+    }
+
+    setSigninError("");
+    setCheckingAdminEmail(true);
+    const allowed = await precheckAdminEmail(normalizedEmail);
+    if (!allowed) {
+      setSigninError("Sorry, you don't have Supabase access.");
+      setCheckingAdminEmail(false);
+      return;
+    }
 
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
+        queryParams: {
+          prompt: "select_account",
+          login_hint: normalizedEmail,
+        },
       },
     });
 
     if (error) {
-      alert(error.message);
+      setSigninError(error.message);
+      setCheckingAdminEmail(false);
     }
   };
 
@@ -72,8 +105,31 @@ export default function LoginPage() {
         <p style={{ marginTop: 16, fontSize: 18, color: "#334155" }}>
           Sign in with Google to continue.
         </p>
+        <label
+          htmlFor="admin-email"
+          style={{ marginTop: 12, display: "block", fontSize: 12, fontWeight: 700, color: "#64748b" }}
+        >
+          Admin Email
+        </label>
+        <input
+          id="admin-email"
+          type="email"
+          value={adminEmail}
+          onChange={(event) => setAdminEmail(event.target.value)}
+          placeholder="your-admin-email@domain.com"
+          style={{
+            marginTop: 8,
+            width: "100%",
+            maxWidth: 420,
+            border: "1px solid #cbd5e1",
+            borderRadius: 10,
+            padding: "10px 12px",
+            fontSize: 16,
+          }}
+        />
         <button
           onClick={handleLogin}
+          disabled={checkingAdminEmail}
           style={{
             marginTop: 20,
             border: "none",
@@ -84,10 +140,11 @@ export default function LoginPage() {
             fontSize: 18,
             fontWeight: 700,
             cursor: "pointer",
+            opacity: checkingAdminEmail ? 0.7 : 1,
           }}
           type="button"
         >
-          Sign in with Google
+          {checkingAdminEmail ? "Checking admin access..." : "Sign in with Google"}
         </button>
       </div>
     </main>

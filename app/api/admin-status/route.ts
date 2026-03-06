@@ -3,15 +3,13 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../../lib/supabase-config";
 
-function parseIsSuperadmin(value: unknown): boolean {
-  if (value === true) return true;
-  if (value === false || value == null) return false;
-  if (typeof value === "number") return value === 1;
-  if (typeof value === "string") {
-    const normalized = value.trim().toLowerCase();
-    return normalized === "true" || normalized === "1" || normalized === "t" || normalized === "yes";
-  }
-  return false;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
+function normalizeEmail(value: unknown): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase();
 }
 
 export async function GET() {
@@ -47,6 +45,7 @@ export async function GET() {
 
   const userId = String(user.id || "").trim();
   const userEmail = String(user.email || "").trim();
+  const normalizedUserEmail = normalizeEmail(userEmail);
 
   // Superadmin status is read-only from profiles.
   // This endpoint never writes roles and only trusts the authenticated user's profile row.
@@ -68,9 +67,14 @@ export async function GET() {
     );
   }
 
-  const isSuperadmin = parseIsSuperadmin(profileById?.is_superadmin);
+  const profileId = String(profileById?.id || "").trim();
+  const normalizedProfileEmail = normalizeEmail(profileById?.email);
+  const profileEmailMatches = Boolean(normalizedUserEmail) && normalizedProfileEmail === normalizedUserEmail;
+  const profileIdMatches = Boolean(userId) && profileId === userId;
+  const strictSuperadmin = profileById?.is_superadmin === true;
+  const isSuperadmin = profileIdMatches && profileEmailMatches && strictSuperadmin;
 
-  return NextResponse.json(
+  const response = NextResponse.json(
     {
       authenticated: true,
       isSuperadmin,
@@ -78,4 +82,6 @@ export async function GET() {
     },
     { status: 200 },
   );
+  response.headers.set("Cache-Control", "no-store, max-age=0");
+  return response;
 }
