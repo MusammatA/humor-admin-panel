@@ -15,21 +15,6 @@ function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-function readAdminAllowlist(): Set<string> {
-  const raw = String(process.env.ADMIN_ALLOWED_EMAILS || "");
-  const normalized = raw
-    .split(",")
-    .map((item) => normalizeEmail(item))
-    .filter(Boolean);
-  return new Set(normalized);
-}
-
-function isEmailInAllowlist(email: string): boolean {
-  const allowlist = readAdminAllowlist();
-  if (!allowlist.size) return false;
-  return allowlist.has(normalizeEmail(email));
-}
-
 function hasSuperadminUserIdMatch(rows: Array<{ id?: unknown; is_superadmin?: unknown }>, expectedId: string): boolean {
   return rows.some((row) => String(row?.id || "").trim() === expectedId && row?.is_superadmin === true);
 }
@@ -72,42 +57,33 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const hasAllowlist = readAdminAllowlist().size > 0;
-  if (hasAllowlist && !isEmailInAllowlist(normalizedEmail)) {
-    return NextResponse.json({ allowed: false }, { status: 200 });
-  }
-
-  let allowed = false;
-  let queryErrorMessage = "";
-  if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    try {
-      const serviceClient = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      });
-      allowed = await querySuperadminByEmail(serviceClient, rawEmail, normalizedEmail);
-    } catch (error) {
-      queryErrorMessage = error instanceof Error ? error.message : "Admin check failed.";
-    }
-  } else if (hasAllowlist) {
-    // Allowlist-only mode: rely on fixed admin emails when service-role verification is unavailable.
-    allowed = true;
-  } else {
+  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return NextResponse.json(
       {
         allowed: false,
         indeterminate: true,
-        error:
-          "Server is missing ADMIN_ALLOWED_EMAILS and SUPABASE_SERVICE_ROLE_KEY. Configure at least one to verify admin emails.",
+        error: "Server is missing SUPABASE_SERVICE_ROLE_KEY for admin email verification.",
       },
       { status: 200 },
     );
   }
 
-  if (!allowed && queryErrorMessage) {
-    return NextResponse.json({ allowed: false, indeterminate: true, error: queryErrorMessage }, { status: 200 });
+  try {
+    const serviceClient = createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const allowed = await querySuperadminByEmail(serviceClient, rawEmail, normalizedEmail);
+    const response = NextResponse.json({ allowed }, { status: 200 });
+    response.headers.set("Cache-Control", "no-store, max-age=0");
+    return response;
+  } catch (error) {
+    return NextResponse.json(
+      {
+        allowed: false,
+        indeterminate: true,
+        error: error instanceof Error ? error.message : "Admin check failed.",
+      },
+      { status: 200 },
+    );
   }
-
-  const response = NextResponse.json({ allowed }, { status: 200 });
-  response.headers.set("Cache-Control", "no-store, max-age=0");
-  return response;
 }

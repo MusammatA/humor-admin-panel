@@ -7,28 +7,6 @@ import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../../lib/supabase-config";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function normalizeEmail(value: unknown): string {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
-
-function readAdminAllowlist(): Set<string> {
-  const raw = String(process.env.ADMIN_ALLOWED_EMAILS || "");
-  return new Set(
-    raw
-      .split(",")
-      .map((item) => normalizeEmail(item))
-      .filter(Boolean),
-  );
-}
-
-function isEmailInAllowlist(email: string): boolean {
-  const allowlist = readAdminAllowlist();
-  if (!allowlist.size) return false;
-  return allowlist.has(normalizeEmail(email));
-}
-
 async function isSuperadminByUserId(client: any, userId: string): Promise<boolean> {
   if (!userId) return false;
   const { data, error } = await client
@@ -72,10 +50,6 @@ export async function GET() {
   }
 
   const userEmail = String(user.email || "").trim();
-  if (!isEmailInAllowlist(userEmail)) {
-    return NextResponse.json({ authenticated: true, isSuperadmin: false, email: userEmail }, { status: 200 });
-  }
-
   let isSuperadmin = await isSuperadminByUserId(supabase, String(user.id || "").trim());
 
   // Fallback where session profile reads are blocked by strict RLS.

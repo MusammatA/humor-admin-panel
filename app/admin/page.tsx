@@ -16,28 +16,6 @@ const INITIAL_STATS = {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-function normalizeEmail(value: unknown): string {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
-
-function readAdminAllowlist(): Set<string> {
-  const raw = String(process.env.ADMIN_ALLOWED_EMAILS || "");
-  return new Set(
-    raw
-      .split(",")
-      .map((item) => normalizeEmail(item))
-      .filter(Boolean),
-  );
-}
-
-function isEmailInAllowlist(email: string): boolean {
-  const allowlist = readAdminAllowlist();
-  if (!allowlist.size) return false;
-  return allowlist.has(normalizeEmail(email));
-}
-
 async function isSuperadminByUserId(client: any, userId: string): Promise<boolean> {
   if (!userId) return false;
   const { data, error } = await client
@@ -78,10 +56,6 @@ export default async function AdminDashboardPage() {
   }
 
   const userEmail = String(user.email || "").trim();
-  if (!isEmailInAllowlist(userEmail)) {
-    redirect("/login?error=not_superadmin");
-  }
-
   let isSuperadmin = await isSuperadminByUserId(supabase, String(user.id || "").trim());
 
   // Fallback for deployments where profile reads are blocked by RLS in session context.

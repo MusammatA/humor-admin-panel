@@ -102,7 +102,7 @@ export default function LoginPage() {
     }
     const normalizedEmail = adminEmail.trim().toLowerCase();
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
-      setSigninError("Enter a valid preapproved admin email.");
+      setSigninError("Enter a valid admin email.");
       return;
     }
 
@@ -120,7 +120,7 @@ export default function LoginPage() {
           setSigninError(String(allowedPayload?.error || "Could not verify admin email. Try again."));
           return;
         }
-        setSigninError("This email is not preapproved for admin access.");
+        setSigninError("This email does not have superadmin access.");
         return;
       }
     } catch (_err) {
@@ -169,7 +169,7 @@ export default function LoginPage() {
           </p>
         ) : null}
         <p style={{ marginTop: 16, fontSize: 18, color: "#334155" }}>
-          Enter your preapproved admin email, then continue with Google sign-in.
+          Enter your admin email, then continue with Google sign-in.
         </p>
         <label
           htmlFor="admin-email"

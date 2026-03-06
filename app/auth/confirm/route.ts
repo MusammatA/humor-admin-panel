@@ -4,28 +4,6 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../../lib/supabase-config";
 
-function normalizeEmail(value: unknown): string {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
-
-function readAdminAllowlist(): Set<string> {
-  const raw = String(process.env.ADMIN_ALLOWED_EMAILS || "");
-  return new Set(
-    raw
-      .split(",")
-      .map((item) => normalizeEmail(item))
-      .filter(Boolean),
-  );
-}
-
-function isEmailInAllowlist(email: string): boolean {
-  const allowlist = readAdminAllowlist();
-  if (!allowlist.size) return false;
-  return allowlist.has(normalizeEmail(email));
-}
-
 async function isSuperadminByUserId(client: any, userId: string): Promise<boolean> {
   if (!userId) return false;
   const { data, error } = await client
@@ -76,12 +54,6 @@ export async function GET(request: Request) {
   if (userError || !user) {
     await supabase.auth.signOut();
     return NextResponse.redirect(`${origin}/login?error=signin_failed`);
-  }
-
-  const userEmail = String(user.email || "").trim();
-  if (!isEmailInAllowlist(userEmail)) {
-    await supabase.auth.signOut();
-    return NextResponse.redirect(`${origin}/login?error=not_superadmin`);
   }
 
   let isSuperadmin = await isSuperadminByUserId(supabase, String(user.id || "").trim());
