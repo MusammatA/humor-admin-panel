@@ -19,10 +19,8 @@ export default function AuthCallbackPage() {
 
         const code = new URLSearchParams(window.location.search).get("code");
         if (code) {
-          if (mounted) {
-            router.replace(`/auth/confirm?code=${encodeURIComponent(code)}`);
-          }
-          return;
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
         } else {
           const {
             data: { session },
