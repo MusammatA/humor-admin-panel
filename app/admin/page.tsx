@@ -1,9 +1,5 @@
-import { ImageIcon, Sparkles, UserRound } from "lucide-react";
 import { createClient } from "@supabase/supabase-js";
-import { StatCard } from "../../components/stat-card";
-import { CaptionsManager } from "../../components/admin/captions-manager";
-import { StorageGrid } from "../../components/admin/storage-grid";
-import { UserActivityManager } from "../../components/admin/user-activity-manager";
+import { AdminTabsShell } from "../../components/admin/admin-tabs-shell";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../lib/supabase-config";
 
 type CaptionRow = {
@@ -119,79 +115,5 @@ async function getDashboardStats() {
 
 export default async function AdminDashboardPage() {
   const stats = await getDashboardStats();
-
-  return (
-    <main className="min-h-screen bg-slate-50 p-6 md:p-10">
-      <div className="mx-auto max-w-6xl space-y-6">
-        <header>
-          <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-            Interesting Statistics
-          </h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Admin snapshot of uploads, creator activity, and caption trends.
-          </p>
-          {stats.error ? (
-            <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-              {stats.error}
-            </p>
-          ) : null}
-        </header>
-
-        <section className="grid gap-4 md:grid-cols-3">
-          <StatCard
-            title="Total Images Uploaded"
-            value={stats.totalImages.toLocaleString()}
-            subtitle="All-time uploads"
-            icon={ImageIcon}
-          />
-          <StatCard
-            title="Most Active User"
-            value={stats.mostActiveUser}
-            subtitle={`${stats.mostActiveCount.toLocaleString()} captions`}
-            icon={UserRound}
-          />
-          <StatCard
-            title="Top Caption Topic"
-            value={stats.topTopics[0]?.topic ?? "No topic data"}
-            subtitle={
-              stats.topTopics[0]
-                ? `${stats.topTopics[0].count.toLocaleString()} mentions`
-                : "No captions matched known topics"
-            }
-            icon={Sparkles}
-          />
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Popular Caption Topics</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Ranked by mention count (examples: Columbia, Furnald, Blaer).
-          </p>
-          <ul className="mt-4 space-y-3">
-            {stats.topTopics.length === 0 ? (
-              <li className="text-sm text-slate-500">No topic matches yet.</li>
-            ) : (
-              stats.topTopics.map((item, index) => (
-                <li
-                  key={item.topic}
-                  className="flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3"
-                >
-                  <span className="font-medium text-slate-800">
-                    {index + 1}. {item.topic}
-                  </span>
-                  <span className="rounded-md bg-slate-200 px-2 py-1 text-xs font-semibold text-slate-700">
-                    {item.count.toLocaleString()} captions
-                  </span>
-                </li>
-              ))
-            )}
-          </ul>
-        </section>
-
-        <CaptionsManager />
-        <UserActivityManager />
-        <StorageGrid bucketName="images" />
-      </div>
-    </main>
-  );
+  return <AdminTabsShell stats={stats} />;
 }
