@@ -55,8 +55,8 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       const res = await fetch("/api/admin-status", { cache: "no-store" });
       const payload = await res.json().catch(() => ({}));
 
-      const authenticated = Boolean(payload?.authenticated);
-      const superadmin = Boolean(payload?.isSuperadmin);
+      const authenticated = payload?.authenticated === true;
+      const superadmin = payload?.isSuperadmin === true || payload?.isSuperadmin === 1;
       const email = String(payload?.email || "");
 
       if (!authenticated) {
