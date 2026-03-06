@@ -11,7 +11,6 @@ type DirectoryUser = {
   id: string;
   email: string;
   name: string;
-  sources: string[];
 };
 
 function asString(value: unknown) {
@@ -106,10 +105,21 @@ function getTimestamp(row: GenericRow) {
   return rowString(row, ["created_at", "created_datetime_utc", "modified_datetime_utc"]);
 }
 
+function getAllRowUserIds(row: GenericRow) {
+  return [
+    rowString(row, ["id"]),
+    rowString(row, ["user_id"]),
+    rowString(row, ["profile_id"]),
+    rowString(row, ["uploader_user_id"]),
+    rowString(row, ["uploaded_by_user_id"]),
+    rowString(row, ["created_by_user_id"]),
+  ].filter(Boolean);
+}
+
 function userMatch(row: GenericRow, user: DirectoryUser) {
-  const rowUserId = getRowUserId(row);
+  const rowUserIds = new Set(getAllRowUserIds(row));
   const rowEmail = getRowEmail(row);
-  return (user.id && rowUserId === user.id) || (user.email && rowEmail === user.email);
+  return (user.id && rowUserIds.has(user.id)) || (user.email && rowEmail === user.email);
 }
 
 export function UserActivityManager() {
@@ -161,10 +171,9 @@ export function UserActivityManager() {
   const directory = useMemo(() => {
     const userMap = new Map<string, DirectoryUser>();
 
-    function upsertUser(partial: Partial<DirectoryUser>, source: string) {
-      const keyBase = partial.id || partial.email;
-      if (!keyBase) return;
-      const key = keyBase.toLowerCase();
+    function upsertUser(partial: Partial<DirectoryUser>) {
+      const key = (partial.id || partial.email || "").toLowerCase();
+      if (!key) return;
       const existing = userMap.get(key);
       if (!existing) {
         userMap.set(key, {
@@ -172,31 +181,47 @@ export function UserActivityManager() {
           id: partial.id ?? "",
           email: partial.email ?? "",
           name: partial.name ?? partial.email ?? partial.id ?? "Unknown user",
-          sources: [source],
         });
         return;
       }
       existing.id = existing.id || partial.id || "";
       existing.email = existing.email || partial.email || "";
-      existing.name = existing.name === "Unknown user" ? partial.name || existing.name : existing.name;
-      if (!existing.sources.includes(source)) existing.sources.push(source);
+      if (!existing.name || existing.name === "Unknown user") {
+        existing.name = partial.name || existing.name;
+      }
     }
 
+    // Profiles are canonical user identities for matching votes/captions/images.
     for (const row of profiles) {
-      upsertUser(
-        { id: rowString(row, ["id"]), email: getRowEmail(row), name: getRowName(row) || getRowEmail(row) },
-        "profiles"
-      );
+      const id = rowString(row, ["id"]);
+      const email = getRowEmail(row);
+      const name = getRowName(row) || email || (id ? `User ${id.slice(0, 8)}` : "Unknown user");
+      upsertUser({ id, email, name });
     }
-    for (const row of captions) {
-      upsertUser({ id: rowString(row, ["user_id"]), email: getRowEmail(row), name: getRowName(row) }, "captions");
-    }
-    for (const row of votes) {
-      upsertUser({ id: rowString(row, ["profile_id", "user_id"]), email: getRowEmail(row), name: getRowName(row) }, "votes");
-    }
-    for (const row of images) {
-      upsertUser({ id: getRowUserId(row), email: getRowEmail(row), name: getRowName(row) }, "images");
-    }
+
+    const enrichFromRows = (rows: GenericRow[]) => {
+      for (const row of rows) {
+        const ids = getAllRowUserIds(row);
+        const email = getRowEmail(row);
+        const name = getRowName(row);
+        for (const id of ids) {
+          const key = id.toLowerCase();
+          const existing = userMap.get(key);
+          if (!existing) {
+            upsertUser({ id, email, name: name || email || `User ${id.slice(0, 8)}` });
+            continue;
+          }
+          existing.email = existing.email || email;
+          if (!existing.name || existing.name === "Unknown user") {
+            existing.name = name || email || existing.name;
+          }
+        }
+      }
+    };
+
+    enrichFromRows(captions);
+    enrichFromRows(votes);
+    enrichFromRows(images);
 
     return Array.from(userMap.values()).sort((a, b) =>
       (a.name || a.email || a.id).localeCompare(b.name || b.email || b.id)
@@ -205,11 +230,8 @@ export function UserActivityManager() {
 
   const filteredUsers = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const columbiaUsers = directory.filter((user) =>
-      user.email.toLowerCase().endsWith("@columbia.edu")
-    );
-    if (!q) return columbiaUsers;
-    return columbiaUsers.filter((user) =>
+    if (!q) return directory;
+    return directory.filter((user) =>
       `${user.name} ${user.email}`.toLowerCase().includes(q)
     );
   }, [directory, query]);
@@ -398,7 +420,7 @@ export function UserActivityManager() {
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search Columbia user by name or email"
+          placeholder="Search users by name or email"
           className="w-full border-none bg-transparent text-sm outline-none"
         />
       </div>
@@ -418,8 +440,6 @@ export function UserActivityManager() {
                 type="button"
               >
                 <p className="text-sm font-semibold text-slate-900">{user.name || "Unknown user"}</p>
-                <p className="truncate text-xs text-slate-600">{user.email || user.id || "No identifier"}</p>
-                <p className="mt-1 text-[11px] text-slate-500">Sources: {user.sources.join(", ")}</p>
               </button>
             ))}
             {!filteredUsers.length ? (
