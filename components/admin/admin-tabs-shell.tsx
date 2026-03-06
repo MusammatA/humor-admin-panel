@@ -1,7 +1,7 @@
 "use client";
 
 import { BarChart3, LogIn, Menu, PlusSquare, Search, ShieldCheck, UserRound, X } from "lucide-react";
-import { type ComponentType, useEffect, useMemo, useState } from "react";
+import { type ComponentType, useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
 import { CreateTab } from "./create-tab";
 import { DataTab } from "./data-tab";
@@ -40,6 +40,7 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   const [roleError, setRoleError] = useState<string | null>(null);
   const [adminLoginEmail, setAdminLoginEmail] = useState("");
   const [adminLoginLoading, setAdminLoginLoading] = useState(false);
+  const roleRequestSeq = useRef(0);
 
   async function precheckAdminEmail(email: string) {
     try {
@@ -54,13 +55,17 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
   }
 
   async function loadRole() {
+    const requestSeq = ++roleRequestSeq.current;
     if (!supabase) {
+      if (requestSeq !== roleRequestSeq.current) return;
       setRoleError("Supabase client not available.");
       setActiveTab("data");
       setRoleLoading(false);
+      setAdminLoginLoading(false);
       return;
     }
 
+    if (requestSeq !== roleRequestSeq.current) return;
     setRoleLoading(true);
     setRoleError(null);
     // Default to least privilege while role is being re-resolved.
@@ -68,6 +73,7 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
     try {
       const res = await fetch("/api/admin-status", { cache: "no-store" });
       const payload = await res.json().catch(() => ({}));
+      if (requestSeq !== roleRequestSeq.current) return;
 
       const authenticated = payload?.authenticated === true;
       const superadmin = payload?.isSuperadmin === true || payload?.isSuperadmin === 1;
@@ -78,6 +84,7 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
         setIsAdmin(false);
         setActiveTab("data");
         setRoleLoading(false);
+        setAdminLoginLoading(false);
         return;
       }
 
@@ -86,13 +93,19 @@ export function AdminTabsShell({ stats }: AdminTabsShellProps) {
       if (!superadmin) {
         setRoleError("Sorry, you don't have Supabase access.");
         setActiveTab("data");
+      } else {
+        // Explicitly clear stale denial errors after a confirmed admin role.
+        setRoleError(null);
       }
       setRoleLoading(false);
+      setAdminLoginLoading(false);
     } catch (_err) {
+      if (requestSeq !== roleRequestSeq.current) return;
       setRoleError("Could not resolve admin status.");
       setCurrentEmail("");
       setIsAdmin(false);
       setRoleLoading(false);
+      setAdminLoginLoading(false);
     }
   }
 

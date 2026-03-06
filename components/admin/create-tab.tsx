@@ -124,6 +124,7 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
 
   const [file, setFile] = useState<File | null>(null);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
+  const [uploadCaption, setUploadCaption] = useState("");
   const [newCaption, setNewCaption] = useState("");
   const [draftByCaptionId, setDraftByCaptionId] = useState<Record<string, string>>({});
   const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
@@ -250,6 +251,37 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     return null;
   }, [images, selectedMeme]);
 
+  async function resolveImageIdByUrl(url: string) {
+    if (!supabase || !url) return "";
+    for (const column of ["image_url", "public_url", "cdn_url", "url"]) {
+      const { data, error } = await supabase
+        .from("images")
+        .select("id")
+        .eq(column, url)
+        .limit(1)
+        .maybeSingle();
+      if (!error && data && typeof data.id !== "undefined") {
+        return String(data.id);
+      }
+    }
+    return "";
+  }
+
+  async function createCaptionForImageId(imageId: string, captionText: string, userId: string) {
+    if (!supabase || !imageId || !captionText) return false;
+    for (const payload of toCaptionInsertPayload(imageId, captionText, userId)) {
+      const { data, error: insertError } = await supabase.from("captions").insert(payload).select("*").maybeSingle();
+      if (!insertError) {
+        const createdCaptionId = data ? getCaptionId(data as Row) : "";
+        if (createdCaptionId) {
+          setUndoStack((prev) => [...prev, { type: "caption-create", captionId: createdCaptionId }]);
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
   async function uploadImage() {
     if (!isAdmin || !supabase || !file) return;
     setError(null);
@@ -272,9 +304,16 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
     const publicUrl = urlData.publicUrl;
     let inserted = false;
+    let insertedImageId = "";
     for (const payload of toImageInsertPayload(publicUrl, userId)) {
-      const { error: insertError } = await supabase.from("images").insert(payload);
+      const { data, error: insertError } = await supabase.from("images").insert(payload).select("*").maybeSingle();
       if (!insertError) {
+        inserted = true;
+        insertedImageId = data ? getImageId(data as Row) : "";
+        break;
+      }
+      const { error: fallbackInsertError } = await supabase.from("images").insert(payload);
+      if (!fallbackInsertError) {
         inserted = true;
         break;
       }
@@ -284,8 +323,27 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
       return;
     }
 
-    setMessage("Image uploaded successfully.");
+    const trimmedUploadCaption = uploadCaption.trim();
+    let captionAdded = false;
+    if (trimmedUploadCaption) {
+      const captionImageId = insertedImageId || (await resolveImageIdByUrl(publicUrl));
+      if (captionImageId) {
+        captionAdded = await createCaptionForImageId(captionImageId, trimmedUploadCaption, userId);
+      }
+      if (!captionImageId || !captionAdded) {
+        setError("Image uploaded, but caption could not be added automatically. Open the meme and add it there.");
+      }
+    }
+
+    setMessage(
+      trimmedUploadCaption
+        ? captionAdded
+          ? "Image and caption uploaded successfully."
+          : "Image uploaded successfully."
+        : "Image uploaded successfully.",
+    );
     setFile(null);
+    setUploadCaption("");
     await loadData();
   }
 
@@ -559,16 +617,27 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
 
       {isAdmin && viewMode === "catalog" ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Upload Picture</h2>
-          <input type="file" className="mt-3 w-full text-sm" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
+          <h2 className="text-lg font-semibold text-slate-900">Upload Picture + Caption</h2>
+          <input
+            type="file"
+            className="mt-3 w-full text-sm"
+            onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+          />
+          <textarea
+            value={uploadCaption}
+            onChange={(event) => setUploadCaption(event.target.value)}
+            placeholder="Optional: write a caption to attach to this uploaded image"
+            className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm"
+          />
           <div className="mt-3 flex flex-wrap gap-2">
             <button
               type="button"
               onClick={uploadImage}
+              disabled={!file}
               className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
             >
               <UploadCloud className="h-4 w-4" />
-              Upload
+              Upload{uploadCaption.trim() ? " + Add Caption" : ""}
             </button>
             <button
               type="button"
