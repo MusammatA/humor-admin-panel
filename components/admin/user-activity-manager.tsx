@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Search, Trash2, UserRound } from "lucide-react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
+import { deleteStorageObjectByPublicUrl } from "../../lib/supabase-storage";
 
 type GenericRow = Record<string, unknown>;
 
@@ -367,6 +368,7 @@ export function UserActivityManager({ canViewSensitive, canMutate }: UserActivit
     }
     if (!supabase) return;
     const imageId = getImageId(image);
+    const imageUrl = getImageUrl(image);
     if (!imageId) return;
     if (!window.confirm(`Delete image ${imageId} and related captions/votes?`)) return;
 
@@ -399,9 +401,20 @@ export function UserActivityManager({ canViewSensitive, canMutate }: UserActivit
       return;
     }
 
+    const { error: storageDeleteError, ref } = await deleteStorageObjectByPublicUrl(supabase, imageUrl, "images");
+
     setVotes((prev) => prev.filter((row) => !captionIds.includes(getVoteCaptionId(row))));
     setCaptions((prev) => prev.filter((row) => getCaptionImageId(row) !== imageId));
     setImages((prev) => prev.filter((row) => getImageId(row) !== imageId));
+
+    if (storageDeleteError) {
+      setError(
+        `Deleted image row ${imageId}, but failed to remove storage object ${ref?.path ?? imageUrl}: ${storageDeleteError.message}`,
+      );
+      return;
+    }
+
+    setError(null);
   }
 
   return (

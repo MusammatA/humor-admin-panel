@@ -1,7 +1,8 @@
 "use client";
 
-import { BarChart3, Menu, PlusSquare, Search, UserRound, X } from "lucide-react";
+import { BarChart3, Menu, PlusSquare, Search, Settings2, UserRound, X } from "lucide-react";
 import { type ComponentType, useState } from "react";
+import { ConfigTab } from "./config-tab";
 import { CreateTab } from "./create-tab";
 import { DataTab } from "./data-tab";
 import { UserActivityManager } from "./user-activity-manager";
@@ -20,11 +21,12 @@ type AdminTabsShellProps = {
   adminEmail?: string;
 };
 
-type AdminTab = "create" | "data" | "users" | "account";
+type AdminTab = "create" | "data" | "config" | "users" | "account";
 
 const TAB_ITEMS: Array<{ id: AdminTab; label: string; icon: ComponentType<{ className?: string }> }> = [
   { id: "create", label: "Create", icon: PlusSquare },
   { id: "data", label: "Data", icon: BarChart3 },
+  { id: "config", label: "Config", icon: Settings2 },
   { id: "users", label: "Search Users", icon: Search },
   { id: "account", label: "Account", icon: UserRound },
 ];
@@ -93,6 +95,7 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
       <div className="mx-auto max-w-7xl p-6 pt-20 md:p-10 md:pt-20">
         {activeTab === "create" ? <CreateTab isAdmin={canEdit} /> : null}
         {activeTab === "data" ? <DataTab stats={stats} canViewUserData={canEdit} /> : null}
+        {activeTab === "config" ? <ConfigTab /> : null}
         {activeTab === "users" ? <UserActivityManager canViewSensitive={canEdit} canMutate={canEdit} /> : null}
         {activeTab === "account" ? <AccountTab /> : null}
       </div>

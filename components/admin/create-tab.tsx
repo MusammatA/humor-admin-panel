@@ -2,7 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, Pencil, RotateCcw, Trash2, Undo2, UploadCloud } from "lucide-react";
-import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
+import {
+  createCaptionRecord,
+  deleteCaptionById,
+  deleteCaptionsByIds,
+  fetchAllCaptions,
+  updateCaptionText,
+} from "../../lib/services/captions";
+import { getErrorMessage } from "../../lib/services/client";
+import {
+  addImage,
+  deleteImage,
+  fetchAllImages,
+  resolveImageIdByUrl,
+  updateImage,
+  updateImageUrl,
+} from "../../lib/services/images";
 
 type Row = Record<string, unknown>;
 
@@ -19,12 +34,6 @@ type CatalogMeme = {
 };
 
 type UndoAction =
-  | {
-      type: "delete-meme";
-      image: Row;
-      captions: Row[];
-      votes: Row[];
-    }
   | {
       type: "caption-update";
       captionId: string;
@@ -84,35 +93,7 @@ function getCaptionImageUrl(row: Row) {
   return str(row, ["image_url", "public_url", "cdn_url", "url"]);
 }
 
-function getTextColumn(row: Row): "caption_text" | "text" {
-  return Object.prototype.hasOwnProperty.call(row, "caption_text") ? "caption_text" : "text";
-}
-
-function toImageInsertPayload(publicUrl: string, userId: string) {
-  return [
-    { image_url: publicUrl, user_id: userId },
-    { public_url: publicUrl, user_id: userId },
-    { cdn_url: publicUrl, user_id: userId },
-    { image_url: publicUrl },
-    { public_url: publicUrl },
-  ];
-}
-
-function toCaptionInsertPayload(imageId: string, text: string, userId: string) {
-  return [
-    { image_id: imageId, user_id: userId, caption_text: text },
-    { image_id: imageId, user_id: userId, text },
-    { image_id: imageId, caption_text: text },
-    { image_id: imageId, text },
-  ];
-}
-
-function toImageUrlUpdatePayloads(url: string) {
-  return [{ image_url: url }, { public_url: url }, { cdn_url: url }, { url }];
-}
-
 export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [images, setImages] = useState<Row[]>([]);
   const [captions, setCaptions] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -130,33 +111,16 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
   const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
   const [originalByImageId, setOriginalByImageId] = useState<Record<string, { image: Row; captions: Row[] }>>({});
 
-  async function fetchAllRows(table: "images" | "captions", pageSize: number, maxPages: number) {
-    if (!supabase) return [] as Row[];
-    const all: Row[] = [];
-    for (let page = 0; page < maxPages; page += 1) {
-      const from = page * pageSize;
-      const to = from + pageSize - 1;
-      const { data, error: fetchError } = await supabase.from(table).select("*").range(from, to);
-      if (fetchError) throw new Error(fetchError.message);
-      const rows = (data ?? []) as Row[];
-      if (!rows.length) break;
-      all.push(...rows);
-      if (rows.length < pageSize) break;
-    }
-    return all;
-  }
-
   async function loadData() {
-    if (!supabase) return;
     setLoading(true);
     setError(null);
     try {
       const [imageRows, captionRows] = await Promise.all([
-        fetchAllRows("images", 1000, 200),
-        fetchAllRows("captions", 2000, 200),
+        fetchAllImages(1000, 200),
+        fetchAllCaptions(2000, 200),
       ]);
-      setImages(imageRows);
-      setCaptions(captionRows);
+      setImages(imageRows as Row[]);
+      setCaptions(captionRows as Row[]);
 
       setOriginalByImageId((prev) => {
         const next = { ...prev };
@@ -174,7 +138,7 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
         return next;
       });
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Failed to load data.");
+      setError(getErrorMessage(loadError));
     } finally {
       setLoading(false);
     }
@@ -251,163 +215,92 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     return null;
   }, [images, selectedMeme]);
 
-  async function resolveImageIdByUrl(url: string) {
-    if (!supabase || !url) return "";
-    for (const column of ["image_url", "public_url", "cdn_url", "url"]) {
-      const { data, error } = await supabase
-        .from("images")
-        .select("id")
-        .eq(column, url)
-        .limit(1)
-        .maybeSingle();
-      if (!error && data && typeof data.id !== "undefined") {
-        return String(data.id);
+  async function createCaptionForImageId(imageId: string, captionText: string, userId?: string) {
+    if (!imageId || !captionText) return false;
+    try {
+      const createdCaption = await createCaptionRecord({ imageId, text: captionText, userId });
+      const createdCaptionId = createdCaption ? getCaptionId(createdCaption as Row) : "";
+      if (createdCaptionId) {
+        setUndoStack((prev) => [...prev, { type: "caption-create", captionId: createdCaptionId }]);
       }
+      return true;
+    } catch {
+      return false;
     }
-    return "";
-  }
-
-  async function createCaptionForImageId(imageId: string, captionText: string, userId: string) {
-    if (!supabase || !imageId || !captionText) return false;
-    for (const payload of toCaptionInsertPayload(imageId, captionText, userId)) {
-      const { data, error: insertError } = await supabase.from("captions").insert(payload).select("*").maybeSingle();
-      if (!insertError) {
-        const createdCaptionId = data ? getCaptionId(data as Row) : "";
-        if (createdCaptionId) {
-          setUndoStack((prev) => [...prev, { type: "caption-create", captionId: createdCaptionId }]);
-        }
-        return true;
-      }
-    }
-    return false;
   }
 
   async function uploadImage() {
-    if (!isAdmin || !supabase || !file) return;
+    if (!isAdmin || !file) return;
     setError(null);
     setMessage(null);
 
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData.user?.id;
-    if (!userId) {
-      setError("Login session missing. Refresh and sign in again.");
-      return;
-    }
-
-    const filePath = `${userId}/${Date.now()}-${file.name.replace(/\s+/g, "-")}`;
-    const { error: uploadError } = await supabase.storage.from(bucketName).upload(filePath, file, { upsert: true });
-    if (uploadError) {
-      setError(uploadError.message);
-      return;
-    }
-
-    const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
-    const publicUrl = urlData.publicUrl;
-    let inserted = false;
-    let insertedImageId = "";
-    for (const payload of toImageInsertPayload(publicUrl, userId)) {
-      const { data, error: insertError } = await supabase.from("images").insert(payload).select("*").maybeSingle();
-      if (!insertError) {
-        inserted = true;
-        insertedImageId = data ? getImageId(data as Row) : "";
-        break;
+    try {
+      const { imageId, publicUrl, userId } = await addImage({ bucketName, file });
+      const trimmedUploadCaption = uploadCaption.trim();
+      let captionAdded = false;
+      if (trimmedUploadCaption) {
+        const captionImageId = imageId || (await resolveImageIdByUrl(publicUrl));
+        if (captionImageId) {
+          captionAdded = await createCaptionForImageId(captionImageId, trimmedUploadCaption, userId);
+        }
+        if (!captionImageId || !captionAdded) {
+          setError("Image uploaded, but caption could not be added automatically. Open the meme and add it there.");
+        }
       }
-      const { error: fallbackInsertError } = await supabase.from("images").insert(payload);
-      if (!fallbackInsertError) {
-        inserted = true;
-        break;
-      }
-    }
-    if (!inserted) {
-      setError("Image uploaded to storage, but failed to write images table row.");
-      return;
-    }
 
-    const trimmedUploadCaption = uploadCaption.trim();
-    let captionAdded = false;
-    if (trimmedUploadCaption) {
-      const captionImageId = insertedImageId || (await resolveImageIdByUrl(publicUrl));
-      if (captionImageId) {
-        captionAdded = await createCaptionForImageId(captionImageId, trimmedUploadCaption, userId);
-      }
-      if (!captionImageId || !captionAdded) {
-        setError("Image uploaded, but caption could not be added automatically. Open the meme and add it there.");
-      }
+      setMessage(
+        trimmedUploadCaption
+          ? captionAdded
+            ? "Image and caption uploaded successfully."
+            : "Image uploaded successfully."
+          : "Image uploaded successfully.",
+      );
+      setFile(null);
+      setUploadCaption("");
+      await loadData();
+    } catch (error) {
+      setError(getErrorMessage(error));
     }
-
-    setMessage(
-      trimmedUploadCaption
-        ? captionAdded
-          ? "Image and caption uploaded successfully."
-          : "Image uploaded successfully."
-        : "Image uploaded successfully.",
-    );
-    setFile(null);
-    setUploadCaption("");
-    await loadData();
   }
 
   async function createCaption() {
-    if (!isAdmin || !supabase || !selectedImageId || !newCaption.trim()) return;
+    if (!isAdmin || !selectedImageId || !newCaption.trim()) return;
     setError(null);
     setMessage(null);
 
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData.user?.id || "";
-    for (const payload of toCaptionInsertPayload(selectedImageId, newCaption.trim(), userId)) {
-      const { data, error: insertError } = await supabase.from("captions").insert(payload).select("*").maybeSingle();
-      if (!insertError) {
-        const createdCaptionId = data ? getCaptionId(data as Row) : "";
-        if (createdCaptionId) {
-          setUndoStack((prev) => [...prev, { type: "caption-create", captionId: createdCaptionId }]);
-        }
-        setNewCaption("");
-        setMessage("Caption created.");
-        await loadData();
-        return;
+    try {
+      const createdCaption = await createCaptionRecord({ imageId: selectedImageId, text: newCaption.trim() });
+      const createdCaptionId = createdCaption ? getCaptionId(createdCaption as Row) : "";
+      if (createdCaptionId) {
+        setUndoStack((prev) => [...prev, { type: "caption-create", captionId: createdCaptionId }]);
       }
+      setNewCaption("");
+      setMessage("Caption created.");
+      await loadData();
+    } catch (error) {
+      setError(getErrorMessage(error));
     }
-    setError("Failed to create caption row with available columns.");
   }
 
   async function replaceImage() {
-    if (!isAdmin || !supabase || !replaceFile || !selectedImageId || !selectedImage) return;
+    if (!isAdmin || !replaceFile || !selectedImageId || !selectedImage) return;
     setError(null);
     setMessage(null);
 
-    const { data: authData } = await supabase.auth.getUser();
-    const userId = authData.user?.id;
-    if (!userId) {
-      setError("Login session missing. Refresh and sign in again.");
-      return;
-    }
-
     const previousUrl = getImageUrl(selectedImage);
-    const filePath = `${userId}/${Date.now()}-${replaceFile.name.replace(/\s+/g, "-")}`;
-    const { error: uploadError } = await supabase.storage.from(bucketName).upload(filePath, replaceFile, { upsert: true });
-    if (uploadError) {
-      setError(uploadError.message);
-      return;
+    try {
+      await updateImage({ bucketName, file: replaceFile, imageId: selectedImageId });
+      setUndoStack((prev) => [...prev, { type: "image-replace", imageId: selectedImageId, previousUrl }]);
+      setReplaceFile(null);
+      setMessage("Image replaced.");
+      await loadData();
+    } catch (error) {
+      setError(getErrorMessage(error));
     }
-
-    const { data: urlData } = supabase.storage.from(bucketName).getPublicUrl(filePath);
-    const nextUrl = urlData.publicUrl;
-
-    for (const payload of toImageUrlUpdatePayloads(nextUrl)) {
-      const { error: updateError } = await supabase.from("images").update(payload).eq("id", selectedImageId);
-      if (!updateError) {
-        setUndoStack((prev) => [...prev, { type: "image-replace", imageId: selectedImageId, previousUrl }]);
-        setReplaceFile(null);
-        setMessage("Image replaced.");
-        await loadData();
-        return;
-      }
-    }
-    setError("Failed to replace image URL in images table.");
   }
 
   async function updateCaption(caption: Row) {
-    if (!isAdmin || !supabase) return;
+    if (!isAdmin) return;
     const captionId = getCaptionId(caption);
     if (!captionId) return;
 
@@ -415,33 +308,31 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     const next = (draftByCaptionId[captionId] ?? current).trim();
     if (!next || next === current) return;
 
-    for (const payload of [{ caption_text: next }, { text: next }]) {
-      const { error: updateError } = await supabase.from("captions").update(payload).eq("id", captionId);
-      if (!updateError) {
-        setUndoStack((prev) => [...prev, { type: "caption-update", captionId, previousText: current }]);
-        setMessage("Caption updated.");
-        await loadData();
-        return;
-      }
+    try {
+      await updateCaptionText(captionId, next);
+      setUndoStack((prev) => [...prev, { type: "caption-update", captionId, previousText: current }]);
+      setMessage("Caption updated.");
+      await loadData();
+    } catch (error) {
+      setError(getErrorMessage(error));
     }
-    setError("Failed to update caption.");
   }
 
   async function deleteCaption(caption: Row) {
-    if (!isAdmin || !supabase) return;
+    if (!isAdmin) return;
     const captionId = getCaptionId(caption);
     if (!captionId) return;
-    const { error: deleteError } = await supabase.from("captions").delete().eq("id", captionId);
-    if (deleteError) {
-      setError(deleteError.message);
-      return;
+    try {
+      await deleteCaptionById(captionId);
+      setMessage("Caption deleted.");
+      await loadData();
+    } catch (error) {
+      setError(getErrorMessage(error));
     }
-    setMessage("Caption deleted.");
-    await loadData();
   }
 
   async function deleteMeme(imageId: string) {
-    if (!isAdmin || !supabase || !imageId) return;
+    if (!isAdmin || !imageId) return;
     if (!window.confirm("Delete this meme image and related captions/votes?")) return;
 
     const imageRow = images.find((row) => normalizeId(getImageId(row)) === normalizeId(imageId));
@@ -450,50 +341,26 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
       return;
     }
 
+    const imageUrl = getImageUrl(imageRow);
     const relatedCaptions = captions.filter((row) => normalizeId(getCaptionImageId(row)) === normalizeId(imageId));
     const captionIds = relatedCaptions.map((row) => getCaptionId(row)).filter(Boolean);
 
-    const { data: relatedVotes } = captionIds.length
-      ? await supabase.from("caption_votes").select("*").in("caption_id", captionIds)
-      : { data: [] as Row[] };
-
-    if (captionIds.length) {
-      const { error: voteDeleteError } = await supabase.from("caption_votes").delete().in("caption_id", captionIds);
-      if (voteDeleteError) {
-        setError(voteDeleteError.message);
-        return;
+    try {
+      const { storageWarning } = await deleteImage({ imageId, imageUrl, bucketName, captionIds });
+      setViewMode("catalog");
+      await loadData();
+      if (storageWarning) {
+        setError(storageWarning);
+      } else {
+        setMessage("Meme deleted from the database and storage.");
       }
+    } catch (error) {
+      setError(getErrorMessage(error));
     }
-
-    const { error: captionDeleteError } = await supabase.from("captions").delete().eq("image_id", imageId);
-    if (captionDeleteError) {
-      setError(captionDeleteError.message);
-      return;
-    }
-
-    const { error: imageDeleteError } = await supabase.from("images").delete().eq("id", imageId);
-    if (imageDeleteError) {
-      setError(imageDeleteError.message);
-      return;
-    }
-
-    setUndoStack((prev) => [
-      ...prev,
-      {
-        type: "delete-meme",
-        image: { ...imageRow },
-        captions: relatedCaptions.map((row) => ({ ...row })),
-        votes: ((relatedVotes ?? []) as Row[]).map((row) => ({ ...row })),
-      },
-    ]);
-
-    setMessage("Meme deleted. You can undo this action.");
-    setViewMode("catalog");
-    await loadData();
   }
 
   async function resetSelectedMeme() {
-    if (!isAdmin || !supabase || !selectedImageId) return;
+    if (!isAdmin || !selectedImageId) return;
     const original = originalByImageId[selectedImageId];
     if (!original) {
       setError("No original snapshot available for this meme yet.");
@@ -501,100 +368,83 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
     }
 
     const originalUrl = getImageUrl(original.image);
-    if (originalUrl) {
-      for (const payload of toImageUrlUpdatePayloads(originalUrl)) {
-        const { error: updateError } = await supabase.from("images").update(payload).eq("id", selectedImageId);
-        if (!updateError) break;
+    try {
+      if (originalUrl) {
+        await updateImageUrl(selectedImageId, originalUrl);
       }
-    }
 
-    const currentForImage = captions.filter((row) => normalizeId(getCaptionImageId(row)) === normalizeId(selectedImageId));
-    const originalById = new Map(original.captions.map((row) => [getCaptionId(row), row]));
-    const currentById = new Map(currentForImage.map((row) => [getCaptionId(row), row]));
+      const currentForImage = captions.filter((row) => normalizeId(getCaptionImageId(row)) === normalizeId(selectedImageId));
+      const originalById = new Map(original.captions.map((row) => [getCaptionId(row), row]));
+      const currentById = new Map(currentForImage.map((row) => [getCaptionId(row), row]));
 
-    const toDelete = currentForImage.filter((row) => {
-      const id = getCaptionId(row);
-      return Boolean(id) && !originalById.has(id);
-    });
+      const toDelete = currentForImage.filter((row) => {
+        const id = getCaptionId(row);
+        return Boolean(id) && !originalById.has(id);
+      });
 
-    if (toDelete.length) {
-      const ids = toDelete.map((row) => getCaptionId(row)).filter(Boolean);
-      await supabase.from("captions").delete().in("id", ids);
-    }
+      if (toDelete.length) {
+        const ids = toDelete.map((row) => getCaptionId(row)).filter(Boolean);
+        await deleteCaptionsByIds(ids);
+      }
 
-    for (const [originalId, originalCaption] of originalById.entries()) {
-      const text = getCaptionText(originalCaption);
-      if (!text) continue;
-      if (currentById.has(originalId)) {
-        const textColumn = getTextColumn(originalCaption);
-        await supabase.from("captions").update({ [textColumn]: text }).eq("id", originalId);
-      } else {
-        for (const payload of [{ image_id: selectedImageId, caption_text: text }, { image_id: selectedImageId, text }]) {
-          const { error: insertError } = await supabase.from("captions").insert(payload);
-          if (!insertError) break;
+      for (const [originalId, originalCaption] of originalById.entries()) {
+        const text = getCaptionText(originalCaption);
+        if (!text) continue;
+        if (currentById.has(originalId)) {
+          await updateCaptionText(originalId, text);
+        } else {
+          await createCaptionRecord({ imageId: selectedImageId, text });
         }
       }
-    }
 
-    setMessage("Selected meme reset to original image and captions.");
-    await loadData();
+      setMessage("Selected meme reset to original image and captions.");
+      await loadData();
+    } catch (error) {
+      setError(getErrorMessage(error));
+    }
   }
 
   async function undoLastAction() {
-    if (!isAdmin || !supabase || undoStack.length === 0) return;
+    if (!isAdmin || undoStack.length === 0) return;
     const action = undoStack[undoStack.length - 1];
 
     if (action.type === "caption-create") {
-      const { error: deleteError } = await supabase.from("captions").delete().eq("id", action.captionId);
-      if (deleteError) return setError(deleteError.message);
-      setUndoStack((prev) => prev.slice(0, -1));
-      setMessage("Undid caption creation.");
-      await loadData();
+      try {
+        await deleteCaptionById(action.captionId);
+        setUndoStack((prev) => prev.slice(0, -1));
+        setMessage("Undid caption creation.");
+        await loadData();
+      } catch (error) {
+        setError(getErrorMessage(error));
+      }
       return;
     }
 
     if (action.type === "caption-update") {
-      for (const payload of [{ caption_text: action.previousText }, { text: action.previousText }]) {
-        const { error: updateError } = await supabase.from("captions").update(payload).eq("id", action.captionId);
-        if (!updateError) {
-          setUndoStack((prev) => prev.slice(0, -1));
-          setMessage("Undid caption update.");
-          await loadData();
-          return;
-        }
+      try {
+        await updateCaptionText(action.captionId, action.previousText);
+        setUndoStack((prev) => prev.slice(0, -1));
+        setMessage("Undid caption update.");
+        await loadData();
+      } catch (error) {
+        setError(getErrorMessage(error));
       }
-      return setError("Failed to undo caption update.");
+      return;
     }
 
     if (action.type === "image-replace") {
-      for (const payload of toImageUrlUpdatePayloads(action.previousUrl)) {
-        const { error: updateError } = await supabase.from("images").update(payload).eq("id", action.imageId);
-        if (!updateError) {
-          setUndoStack((prev) => prev.slice(0, -1));
-          setMessage("Undid image replacement.");
-          await loadData();
-          return;
-        }
+      try {
+        await updateImageUrl(action.imageId, action.previousUrl);
+        setUndoStack((prev) => prev.slice(0, -1));
+        setMessage("Undid image replacement.");
+        await loadData();
+      } catch (error) {
+        setError(getErrorMessage(error));
       }
-      return setError("Failed to undo image replacement.");
+      return;
     }
 
-    const { error: imageInsertError } = await supabase.from("images").insert(action.image);
-    if (imageInsertError) return setError(imageInsertError.message);
-
-    if (action.captions.length) {
-      const { error: captionsInsertError } = await supabase.from("captions").insert(action.captions);
-      if (captionsInsertError) return setError(captionsInsertError.message);
-    }
-
-    if (action.votes.length) {
-      const { error: votesInsertError } = await supabase.from("caption_votes").insert(action.votes);
-      if (votesInsertError) return setError(votesInsertError.message);
-    }
-
-    setUndoStack((prev) => prev.slice(0, -1));
-    setMessage("Undid meme deletion.");
-    await loadData();
+    setError("This action cannot be undone.");
   }
 
   return (

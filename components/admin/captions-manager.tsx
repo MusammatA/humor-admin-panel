@@ -1,17 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Pencil, Trash2, X } from "lucide-react";
-import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
-
-type CaptionRow = {
-  id: string;
-  user_id?: string | null;
-  topic?: string | null;
-  caption_text?: string | null;
-  text?: string | null;
-  created_at?: string | null;
-};
+import { deleteCaptionById, fetchCaptions, updateCaptionText } from "../../lib/services/captions";
+import { getErrorMessage } from "../../lib/services/client";
+import type { Caption as CaptionRow } from "../../types";
 
 function getCaptionValue(row: CaptionRow) {
   return row.caption_text ?? row.text ?? "";
@@ -27,7 +20,6 @@ type CaptionsManagerProps = {
 };
 
 export function CaptionsManager({ canManage }: CaptionsManagerProps) {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [captions, setCaptions] = useState<CaptionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,25 +29,15 @@ export function CaptionsManager({ canManage }: CaptionsManagerProps) {
   const [saving, setSaving] = useState(false);
 
   async function loadCaptions() {
-    if (!supabase) {
-      setError("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
-
-    const { data, error: fetchError } = await supabase.from("captions").select("*");
-
-    if (fetchError) {
-      setError(fetchError.message);
+    try {
+      setCaptions(await fetchCaptions());
+    } catch (error) {
+      setError(getErrorMessage(error));
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setCaptions((data as CaptionRow[]) ?? []);
-    setLoading(false);
   }
 
   useEffect(() => {
@@ -63,18 +45,16 @@ export function CaptionsManager({ canManage }: CaptionsManagerProps) {
   }, []);
 
   async function handleDelete(id: string) {
-    if (!supabase) return;
     setError(null);
     const confirmed = window.confirm("Delete this caption?");
     if (!confirmed) return;
 
-    const { error: deleteError } = await supabase.from("captions").delete().eq("id", id);
-    if (deleteError) {
-      setError(deleteError.message);
-      return;
+    try {
+      await deleteCaptionById(id);
+      setCaptions((prev) => prev.filter((row) => row.id !== id));
+    } catch (error) {
+      setError(getErrorMessage(error));
     }
-
-    setCaptions((prev) => prev.filter((row) => row.id !== id));
   }
 
   function openEditModal(row: CaptionRow) {
@@ -83,29 +63,24 @@ export function CaptionsManager({ canManage }: CaptionsManagerProps) {
   }
 
   async function saveEdit() {
-    if (!editing || !supabase) return;
+    if (!editing) return;
     setSaving(true);
     setError(null);
 
     const textColumn = getTextColumn(editing);
-    const { error: updateError } = await supabase
-      .from("captions")
-      .update({ [textColumn]: draftText })
-      .eq("id", editing.id);
-
-    if (updateError) {
-      setError(updateError.message);
+    try {
+      await updateCaptionText(editing.id, draftText);
+      setCaptions((prev) =>
+        prev.map((row) =>
+          row.id === editing.id ? { ...row, [textColumn]: draftText } : row
+        )
+      );
+      setEditing(null);
+    } catch (error) {
+      setError(getErrorMessage(error));
+    } finally {
       setSaving(false);
-      return;
     }
-
-    setCaptions((prev) =>
-      prev.map((row) =>
-        row.id === editing.id ? { ...row, [textColumn]: draftText } : row
-      )
-    );
-    setSaving(false);
-    setEditing(null);
   }
 
   return (

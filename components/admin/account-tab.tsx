@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Moon, Sun, UserRound } from "lucide-react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
+import type { CaptionVote, DatabaseRow, Profile } from "../../types";
 
-type Row = Record<string, unknown>;
-
-function str(row: Row, keys: string[]) {
+function str(row: DatabaseRow, keys: string[]) {
   for (const key of keys) {
     const value = row[key];
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -17,7 +16,7 @@ function str(row: Row, keys: string[]) {
 export function AccountTab() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [user, setUser] = useState<{ id: string; email: string } | null>(null);
-  const [profile, setProfile] = useState<Row | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [counts, setCounts] = useState({ images: 0, captions: 0, upvotes: 0, downvotes: 0 });
   const [theme, setTheme] = useState<"light" | "dark">("light");
 
@@ -48,8 +47,8 @@ export function AccountTab() {
       supabase.from("caption_votes").select("vote_value").eq("profile_id", authUser.id).limit(10000),
     ]);
 
-    setProfile((profileRes.data ?? null) as Row | null);
-    const votes = (votesRes.data ?? []) as Row[];
+    setProfile((profileRes.data ?? null) as Profile | null);
+    const votes = (votesRes.data ?? []) as CaptionVote[];
     const upvotes = votes.filter((row) => Number(row["vote_value"] ?? 0) > 0).length;
     const downvotes = votes.filter((row) => Number(row["vote_value"] ?? 0) < 0).length;
     setCounts({

@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "../../../lib/supabase-config";
+import { isAdminEmailAllowed } from "../../../lib/admin-allowlist";
 
 async function isSuperadminByUserId(client: any, userId: string): Promise<boolean> {
   if (!userId) return false;
@@ -54,6 +55,12 @@ export async function GET(request: Request) {
   if (userError || !user) {
     await supabase.auth.signOut();
     return NextResponse.redirect(`${origin}/login?error=signin_failed`);
+  }
+
+  const userEmail = String(user.email || "").trim();
+  if (!(await isAdminEmailAllowed(userEmail))) {
+    await supabase.auth.signOut();
+    return NextResponse.redirect(`${origin}/login?error=domain_not_allowed`);
   }
 
   let isSuperadmin = await isSuperadminByUserId(supabase, String(user.id || "").trim());

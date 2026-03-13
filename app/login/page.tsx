@@ -66,6 +66,10 @@ export default function LoginPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error") || "";
+    if (error === "domain_not_allowed") {
+      setSigninError("This email domain is not allowed for access.");
+      return;
+    }
     if (error === "not_superadmin") {
       setSigninError("This account does not have admin access.");
       return;
