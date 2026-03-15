@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Sparkles } from "lucide-react";
+import { Shield } from "lucide-react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
 
 async function fetchAdminStatusWithTimeout(ms: number) {
@@ -138,37 +138,21 @@ export default function LoginPage() {
       <div className="login-cinema-orb login-cinema-orb-b" aria-hidden />
       <div className="login-cinema-grid" aria-hidden />
 
-      <section className="relative mx-auto grid w-full max-w-6xl gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
-        <div className="rounded-2xl border border-slate-200 bg-white/85 p-8 shadow-lg backdrop-blur-sm">
-          <p className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/85 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">
-            <Sparkles className="h-3.5 w-3.5" />
-            Superadmin Portal
-          </p>
-          <h1 className="mt-4 text-5xl font-bold leading-[0.95] text-slate-900 sm:text-6xl">Admin Login</h1>
-          <p className="mt-4 max-w-2xl text-lg leading-relaxed text-slate-700">
-            Secure access for Humor Study administrators. Only authenticated Google users with
-            <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5 text-base">profiles.is_superadmin = true</code>
-            can enter this dashboard.
-          </p>
-          <div className="mt-6 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
-            <div className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2">Google OAuth required</div>
-            <div className="rounded-lg border border-slate-200 bg-white/90 px-3 py-2">Server-side role check</div>
+      <section className="relative mx-auto flex min-h-[calc(100vh-5rem)] w-full max-w-2xl items-center justify-center">
+        <div className="w-full rounded-3xl border border-slate-200 bg-white/92 p-8 text-center shadow-lg backdrop-blur-sm sm:p-10">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <Shield className="h-6 w-6 text-slate-700" />
           </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white/92 p-7 shadow-lg backdrop-blur-sm">
-          <div className="flex items-center gap-2 text-slate-700">
-            <Shield className="h-5 w-5" />
-            <h2 className="text-xl font-semibold text-slate-900">Sign In</h2>
-          </div>
+          <h1 className="mt-5 text-4xl font-bold leading-tight text-slate-900 sm:text-5xl">Admin Login</h1>
+          <p className="mt-3 text-sm text-slate-500">Sign in with Google to continue.</p>
 
           {checkingSession ? (
-            <p className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+            <p className="mx-auto mt-6 max-w-md rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
               Checking existing session...
             </p>
           ) : null}
           {signinError ? (
-            <p className="mt-4 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+            <p className="mx-auto mt-6 max-w-md rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
               Sign-in failed ({signinError}). Try again.
             </p>
           ) : null}
@@ -176,7 +160,7 @@ export default function LoginPage() {
           <button
             onClick={handleLogin}
             disabled={signingIn}
-            className="mt-6 inline-flex w-full items-center justify-center rounded-xl px-5 py-4 text-lg font-extrabold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
+            className="mx-auto mt-8 inline-flex w-full max-w-md items-center justify-center rounded-xl px-5 py-4 text-lg font-extrabold text-white shadow-lg transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-70"
             style={{
               background: "linear-gradient(135deg, var(--brand), var(--brand-2))",
               boxShadow: "0 14px 28px rgba(39, 47, 56, 0.22)",
@@ -186,7 +170,7 @@ export default function LoginPage() {
             {signingIn ? "Redirecting to Google..." : "Sign in with Google"}
           </button>
 
-          <p className="mt-4 text-center text-xs text-slate-500">
+          <p className="mt-4 text-xs text-slate-500">
             You will be redirected back to this website after Google authentication.
           </p>
         </div>
