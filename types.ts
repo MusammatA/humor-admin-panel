@@ -93,7 +93,7 @@ export interface HumorStep extends DatabaseRow {
 }
 
 export interface HumorMix extends DatabaseRow {
-  id: string;
+  id?: string | number;
   val: unknown;
   name?: string | null;
   label?: string | null;

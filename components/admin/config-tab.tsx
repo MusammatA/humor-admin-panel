@@ -102,6 +102,55 @@ function getMixId(row: HumorMix) {
   return str(row, ["id"]);
 }
 
+function getMixFlavorId(row: HumorMix) {
+  return str(row, ["humor_flavor_id"]);
+}
+
+function getMixValue(row: HumorMix) {
+  return row.val ?? row.caption_count ?? "";
+}
+
+function getMixSettingLabel(row: HumorMix) {
+  if (row.caption_count != null || "caption_count" in row) {
+    return "Captions Per Generation";
+  }
+
+  return str(row, ["name", "label"]) || "Legacy Mix Value";
+}
+
+function getMixSettingDescription(row: HumorMix) {
+  if (row.caption_count != null || "caption_count" in row) {
+    return "How many caption candidates the generation pipeline should produce for this mix row.";
+  }
+
+  return "A raw mix value used by an older version of the caption generation pipeline.";
+}
+
+function getMixTargetDescription(row: HumorMix) {
+  const flavorId = getMixFlavorId(row);
+  if (!flavorId) {
+    return "This setting is global and not tied to a specific flavor row.";
+  }
+
+  return `Targets legacy flavor id ${flavorId}. This staging table still uses older numeric flavor ids, so it may not line up with the newer UUID-based humor_flavors table yet.`;
+}
+
+function getMixInputLabel(row: HumorMix) {
+  if (row.caption_count != null || "caption_count" in row) {
+    return "Caption count";
+  }
+
+  return "Setting value";
+}
+
+function getMixInputPlaceholder(row: HumorMix) {
+  if (row.caption_count != null || "caption_count" in row) {
+    return "Number of captions to generate";
+  }
+
+  return "Enter mix setting value";
+}
+
 function getStepTitle(row: HumorStep) {
   return str(row, ["title", "step", "step_text", "instruction", "description", "id"]);
 }
@@ -138,19 +187,20 @@ const CONFIG_SECTION_COPY: Record<ConfigFocusSection, { title: string; descripti
   all: {
     title: "Config",
     description:
-      "Read from profiles and manage the humor flavors, humor mix, llm providers, llm models, and allowed domains tables.",
+      "Read from profiles and manage humor flavors, their steps, the generation mix settings, llm providers, llm models, and allowed domains.",
   },
   profiles: {
     title: "Profiles Snapshot",
     description: "Review a read-only sample of profile records used by the admin dashboard.",
   },
   "humor-flavors": {
-    title: "Humor Flavors + Steps",
-    description: "Browse available humor flavors, pick one, and inspect the step sequence attached to that flavor.",
+    title: "Humor Flavors + Steps + Mix",
+    description:
+      "Browse available humor flavors, inspect their step sequence, and review the generation mix settings that affect how many captions get produced.",
   },
   "humor-mix": {
-    title: "Humor Mix",
-    description: "Update the live humor mix rows that control caption composition.",
+    title: "Generation Mix Settings",
+    description: "Review and update the low-level mix rows that influence the caption generation pipeline.",
   },
   "llm-providers": {
     title: "LLM Providers",
@@ -419,7 +469,7 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   const copy = CONFIG_SECTION_COPY[focusSection];
   const showProfiles = focusSection === "all" || focusSection === "profiles";
   const showFlavorSection = focusSection === "all" || focusSection === "humor-flavors";
-  const showHumorMix = focusSection === "all" || focusSection === "humor-mix";
+  const showHumorMix = focusSection === "all" || focusSection === "humor-flavors" || focusSection === "humor-mix";
   const showProviders = focusSection === "all" || focusSection === "llm-providers";
   const showModels = focusSection === "all" || focusSection === "llm-models";
   const showDomains = focusSection === "all" || focusSection === "allowed-domains";
@@ -572,50 +622,56 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
         <div className={`grid gap-6 ${middleSectionCount > 1 ? "xl:grid-cols-2" : ""}`}>
           {showHumorMix ? (
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-2">
-            <Save className="h-5 w-5 text-slate-700" />
-            <h2 className="text-lg font-semibold text-slate-900">Humor Mix</h2>
-          </div>
-          <p className="mt-2 text-sm text-slate-600">
-            Update the <code className="rounded bg-slate-100 px-1.5 py-0.5">val</code> field on
-            <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5">humor_mix</code> rows.
-          </p>
-          {loading ? (
-            <p className="mt-4 text-sm text-slate-500">Loading humor mix rows...</p>
-          ) : humorMix.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">No humor mix rows returned.</p>
-          ) : (
-            <div className="mt-4 max-h-[32rem] space-y-3 overflow-y-auto pr-1">
-              {humorMix.map((row) => {
-                const id = getMixId(row);
-                return (
-                  <div key={id || JSON.stringify(row)} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-mono text-xs text-slate-500">{id || "No id column"}</p>
-                        <p className="mt-1 text-xs text-slate-600">{rowPreview(row, ["val"]) || "No extra columns"}</p>
+              <div className="flex items-center gap-2">
+                <Save className="h-5 w-5 text-slate-700" />
+                <h2 className="text-lg font-semibold text-slate-900">Generation Mix Settings</h2>
+              </div>
+              <p className="mt-2 text-sm text-slate-600">
+                These settings live alongside the flavor pipeline. They control low-level generation behavior such as
+                how many caption options the system should ask for when a mix row runs.
+              </p>
+              {loading ? (
+                <p className="mt-4 text-sm text-slate-500">Loading mix settings...</p>
+              ) : humorMix.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">No mix settings returned.</p>
+              ) : (
+                <div className="mt-4 max-h-[32rem] space-y-3 overflow-y-auto pr-1">
+                  {humorMix.map((row) => {
+                    const id = getMixId(row);
+                    return (
+                      <div key={id || JSON.stringify(row)} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-slate-900">{getMixSettingLabel(row)}</p>
+                            <p className="text-xs leading-relaxed text-slate-600">{getMixSettingDescription(row)}</p>
+                            <p className="text-xs leading-relaxed text-slate-500">{getMixTargetDescription(row)}</p>
+                            <p className="font-mono text-[11px] text-slate-500">row id: {id || "unknown"}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => saveMixRow(row)}
+                            disabled={!id}
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Save
+                          </button>
+                        </div>
+                        <label className="mt-3 block text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                          {getMixInputLabel(row)}
+                        </label>
+                        <textarea
+                          value={mixDrafts[id] ?? stringifyEditableValue(getMixValue(row))}
+                          onChange={(event) => setMixDrafts((prev) => ({ ...prev, [id]: event.target.value }))}
+                          className="mt-2 min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                          placeholder={getMixInputPlaceholder(row)}
+                          disabled={!id}
+                        />
+                        <p className="mt-2 text-xs text-slate-500">{rowPreview(row, ["val", "caption_count"]) || "No extra metadata"}</p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => saveMixRow(row)}
-                        disabled={!id}
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        Save
-                      </button>
-                    </div>
-                    <textarea
-                      value={mixDrafts[id] ?? ""}
-                      onChange={(event) => setMixDrafts((prev) => ({ ...prev, [id]: event.target.value }))}
-                      className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                      placeholder="val"
-                      disabled={!id}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                    );
+                  })}
+                </div>
+              )}
             </article>
           ) : null}
 

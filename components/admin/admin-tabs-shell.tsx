@@ -13,7 +13,6 @@ import {
   Menu,
   PanelLeftClose,
   ShieldCheck,
-  SlidersHorizontal,
   Sparkles,
   Users,
   FileText,
@@ -51,7 +50,6 @@ type AdminTab =
   | "users"
   | "images"
   | "humor-flavors"
-  | "humor-mix"
   | "terms"
   | "caption-requests"
   | "caption-examples"
@@ -85,8 +83,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Config",
     items: [
-      { id: "humor-flavors", label: "Humor Flavors + Steps", icon: Sparkles },
-      { id: "humor-mix", label: "Humor Mix", icon: SlidersHorizontal },
+      { id: "humor-flavors", label: "Humor Flavors + Steps + Mix", icon: Sparkles },
       { id: "terms", label: "Terms", icon: BookOpen },
       { id: "caption-requests", label: "Caption Requests", icon: ShieldCheck },
       { id: "caption-examples", label: "Caption Examples", icon: FileText },
@@ -169,8 +166,6 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
         );
       case "humor-flavors":
         return <ConfigTab focusSection="humor-flavors" />;
-      case "humor-mix":
-        return <ConfigTab focusSection="humor-mix" />;
       case "terms":
         return <TermsManager canManage={canEdit} />;
       case "caption-requests":
