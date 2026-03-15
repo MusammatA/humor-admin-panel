@@ -8,6 +8,8 @@ import { deleteCaptionById, fetchCaptions, updateCaptionText } from "../../lib/s
 import { getErrorMessage } from "../../lib/services/client";
 import type { Caption as CaptionRow } from "../../types";
 
+const CAPTIONS_PER_PAGE = 20;
+
 function getCaptionValue(row: CaptionRow) {
   return row.caption_text ?? row.text ?? "";
 }
@@ -39,6 +41,7 @@ export function CaptionsManager({
   const [editing, setEditing] = useState<CaptionRow | null>(null);
   const [draftText, setDraftText] = useState("");
   const [saving, setSaving] = useState(false);
+  const [page, setPage] = useState(0);
 
   async function loadCaptions() {
     setLoading(true);
@@ -55,6 +58,10 @@ export function CaptionsManager({
   useEffect(() => {
     loadCaptions();
   }, []);
+
+  useEffect(() => {
+    setPage(0);
+  }, [captions.length]);
 
   async function handleDelete(id: string) {
     setError(null);
@@ -95,6 +102,13 @@ export function CaptionsManager({
     }
   }
 
+  const pageCount = Math.max(1, Math.ceil(captions.length / CAPTIONS_PER_PAGE));
+  const currentPage = Math.min(page, pageCount - 1);
+  const visibleCaptions = captions.slice(
+    currentPage * CAPTIONS_PER_PAGE,
+    currentPage * CAPTIONS_PER_PAGE + CAPTIONS_PER_PAGE,
+  );
+
   return (
     <section className="space-y-6">
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -116,6 +130,33 @@ export function CaptionsManager({
             Refresh
           </button>
         </div>
+
+        {captions.length ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+            <p>
+              Showing {currentPage * CAPTIONS_PER_PAGE + 1}-
+              {Math.min((currentPage + 1) * CAPTIONS_PER_PAGE, captions.length)} of {captions.length}
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setPage((value) => Math.max(0, value - 1))}
+                disabled={currentPage === 0}
+                className="rounded-md border border-slate-300 px-2.5 py-1 font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Prev 20
+              </button>
+              <button
+                type="button"
+                onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))}
+                disabled={currentPage >= pageCount - 1}
+                className="rounded-md border border-slate-300 px-2.5 py-1 font-medium text-slate-700 hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next 20
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {error ? (
           <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -139,7 +180,7 @@ export function CaptionsManager({
                 </tr>
               </thead>
               <tbody>
-                {captions.map((row) => (
+                {visibleCaptions.map((row) => (
                   <tr key={row.id} className="border-b border-slate-100 align-top">
                     <td className="max-w-xl px-3 py-3 text-slate-800">{getCaptionValue(row)}</td>
                     <td className="px-3 py-3 text-slate-600">{row.topic ?? "-"}</td>
@@ -191,7 +232,7 @@ export function CaptionsManager({
               <textarea
                 value={draftText}
                 onChange={(event) => setDraftText(event.target.value)}
-                className="min-h-36 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none ring-slate-300 focus:ring"
+                className="min-h-36 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-900 outline-none ring-slate-300 focus:ring"
               />
               <div className="mt-4 flex justify-end gap-2">
                 <button

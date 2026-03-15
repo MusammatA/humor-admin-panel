@@ -7,7 +7,6 @@ import {
   History,
   ImageIcon,
   LayoutDashboard,
-  MessageSquare,
   Search,
   Trash2,
   UserRound,
@@ -33,12 +32,12 @@ type UserActivityData = {
   captionVotes: GenericRow[];
 };
 
-type DetailTab = "overview" | "uploaded-images" | "captions" | "vote-history";
+type DetailTab = "overview" | "uploaded-images" | "vote-history";
 
 const USERS_PER_PAGE = 20;
 const IMAGES_PER_PAGE = 4;
-const CAPTIONS_PER_PAGE = 10;
 const VOTES_PER_PAGE = 20;
+const IMAGE_CAPTIONS_PER_PAGE = 20;
 
 function asString(value: unknown) {
   return typeof value === "string" ? value : "";
@@ -167,8 +166,8 @@ export function UserActivityManager({
   const [userPage, setUserPage] = useState(0);
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [imagesPage, setImagesPage] = useState(0);
-  const [captionsPage, setCaptionsPage] = useState(0);
   const [votesPage, setVotesPage] = useState(0);
+  const [imageCaptionPages, setImageCaptionPages] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -409,8 +408,8 @@ export function UserActivityManager({
   useEffect(() => {
     setDetailTab("overview");
     setImagesPage(0);
-    setCaptionsPage(0);
     setVotesPage(0);
+    setImageCaptionPages({});
   }, [selectedUser?.key]);
 
   const details = useMemo(() => {
@@ -574,12 +573,6 @@ export function UserActivityManager({
           count: details.createdImages.length,
         },
         {
-          id: "captions",
-          label: "Captions",
-          icon: MessageSquare,
-          count: details.userCaptions.length,
-        },
-        {
           id: "vote-history",
           label: "Vote History",
           icon: History,
@@ -597,18 +590,6 @@ export function UserActivityManager({
     ? details.createdImages.slice(
         currentImagesPage * IMAGES_PER_PAGE,
         currentImagesPage * IMAGES_PER_PAGE + IMAGES_PER_PAGE,
-      )
-    : [];
-
-  const captionsPageCount = Math.max(
-    1,
-    Math.ceil((details?.userCaptions.length ?? 0) / CAPTIONS_PER_PAGE),
-  );
-  const currentCaptionsPage = Math.min(captionsPage, captionsPageCount - 1);
-  const visibleCaptions = details
-    ? details.userCaptions.slice(
-        currentCaptionsPage * CAPTIONS_PER_PAGE,
-        currentCaptionsPage * CAPTIONS_PER_PAGE + CAPTIONS_PER_PAGE,
       )
     : [];
 
@@ -916,6 +897,18 @@ export function UserActivityManager({
                                   const imageId = getImageId(image);
                                   const imageUrl = getImageUrl(image);
                                   const imageCaptions = details.captionsByImage.get(imageId) ?? [];
+                                  const imageCaptionsPageCount = Math.max(
+                                    1,
+                                    Math.ceil(imageCaptions.length / IMAGE_CAPTIONS_PER_PAGE),
+                                  );
+                                  const currentImageCaptionsPage = Math.min(
+                                    imageCaptionPages[imageId] ?? 0,
+                                    imageCaptionsPageCount - 1,
+                                  );
+                                  const visibleImageCaptions = imageCaptions.slice(
+                                    currentImageCaptionsPage * IMAGE_CAPTIONS_PER_PAGE,
+                                    currentImageCaptionsPage * IMAGE_CAPTIONS_PER_PAGE + IMAGE_CAPTIONS_PER_PAGE,
+                                  );
                                   return (
                                     <article key={imageId} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
                                       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -950,10 +943,53 @@ export function UserActivityManager({
                                       )}
                                       <ul className="space-y-2">
                                         {imageCaptions.length ? (
-                                          imageCaptions.map((caption) => {
-                                            const captionId = getCaptionId(caption);
-                                            const captionStat = details.voteStatsByCaption.get(captionId);
-                                            return (
+                                          <>
+                                            <li className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-500">
+                                              <span>
+                                                Showing {currentImageCaptionsPage * IMAGE_CAPTIONS_PER_PAGE + 1}-
+                                                {Math.min(
+                                                  (currentImageCaptionsPage + 1) * IMAGE_CAPTIONS_PER_PAGE,
+                                                  imageCaptions.length,
+                                                )} of {imageCaptions.length} captions
+                                              </span>
+                                              <span className="flex items-center gap-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setImageCaptionPages((prev) => ({
+                                                      ...prev,
+                                                      [imageId]: Math.max(0, currentImageCaptionsPage - 1),
+                                                    }))
+                                                  }
+                                                  disabled={currentImageCaptionsPage === 0}
+                                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                  aria-label="Previous image captions"
+                                                >
+                                                  <ChevronLeft className="h-3.5 w-3.5" />
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() =>
+                                                    setImageCaptionPages((prev) => ({
+                                                      ...prev,
+                                                      [imageId]: Math.min(
+                                                        imageCaptionsPageCount - 1,
+                                                        currentImageCaptionsPage + 1,
+                                                      ),
+                                                    }))
+                                                  }
+                                                  disabled={currentImageCaptionsPage >= imageCaptionsPageCount - 1}
+                                                  className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                                  aria-label="Next image captions"
+                                                >
+                                                  <ChevronRight className="h-3.5 w-3.5" />
+                                                </button>
+                                              </span>
+                                            </li>
+                                            {visibleImageCaptions.map((caption) => {
+                                              const captionId = getCaptionId(caption);
+                                              const captionStat = details.voteStatsByCaption.get(captionId);
+                                              return (
                                               <li
                                                 key={captionId}
                                                 className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
@@ -967,99 +1003,12 @@ export function UserActivityManager({
                                                 </p>
                                               </li>
                                             );
-                                          })
+                                          })}
+                                          </>
                                         ) : (
                                           <li className="text-xs text-slate-500">No captions found for this image.</li>
                                         )}
                                       </ul>
-                                    </article>
-                                  );
-                                })}
-                              </div>
-                            )}
-                          </>
-                        ) : null}
-
-                        {detailTab === "captions" ? (
-                          <>
-                            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
-                              <div>
-                                <h4 className="text-sm font-semibold text-slate-900">Created Captions</h4>
-                                <p className="text-xs text-slate-500">
-                                  Captions authored by this user, with associated image and vote totals.
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <p className="text-xs text-slate-500">
-                                  {details.userCaptions.length
-                                    ? `Showing ${currentCaptionsPage * CAPTIONS_PER_PAGE + 1}-${Math.min(
-                                        (currentCaptionsPage + 1) * CAPTIONS_PER_PAGE,
-                                        details.userCaptions.length,
-                                      )} of ${details.userCaptions.length}`
-                                    : "No created captions"}
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() => setCaptionsPage((page) => Math.max(0, page - 1))}
-                                  disabled={currentCaptionsPage === 0}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                  aria-label="Previous captions"
-                                >
-                                  <ChevronLeft className="h-4 w-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setCaptionsPage((page) => Math.min(captionsPageCount - 1, page + 1))}
-                                  disabled={currentCaptionsPage >= captionsPageCount - 1}
-                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                                  aria-label="Next captions"
-                                >
-                                  <ChevronRight className="h-4 w-4" />
-                                </button>
-                              </div>
-                            </div>
-                            {!details.userCaptions.length ? (
-                              <p className="text-sm text-slate-500">No created captions found for this user.</p>
-                            ) : (
-                              <div className="space-y-4">
-                                {visibleCaptions.map((caption) => {
-                                  const captionId = getCaptionId(caption);
-                                  const imageId = getCaptionImageId(caption);
-                                  const image = details.imageById.get(imageId) ?? {};
-                                  const imageUrl = getImageUrl(image);
-                                  const captionStat = details.voteStatsByCaption.get(captionId);
-                                  return (
-                                    <article key={captionId} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                                      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
-                                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                                          {imageUrl ? (
-                                            <div className="flex min-h-[18rem] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(90,148,204,0.1),transparent_45%),linear-gradient(180deg,rgba(248,245,238,0.9),rgba(237,245,239,0.85))] p-3">
-                                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                                              <img
-                                                src={imageUrl}
-                                                alt={imageId || "Caption image"}
-                                                className="max-h-[24rem] w-full rounded-lg object-contain"
-                                              />
-                                            </div>
-                                          ) : (
-                                            <div className="flex min-h-[18rem] items-center justify-center p-4 text-xs text-slate-500">
-                                              No image preview
-                                            </div>
-                                          )}
-                                        </div>
-                                        <div>
-                                          <p className="font-mono text-xs text-slate-500">Caption ID: {captionId || "N/A"}</p>
-                                          <p className="mt-1 font-mono text-xs text-slate-500">Image ID: {imageId || "N/A"}</p>
-                                          <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm leading-relaxed text-slate-800">
-                                            {getCaptionText(caption) || "(empty caption)"}
-                                          </p>
-                                          <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
-                                            <p>Upvotes: {captionStat?.up ?? 0}</p>
-                                            <p>Downvotes: {captionStat?.down ?? 0}</p>
-                                            <p>Score: {captionStat?.total ?? 0}</p>
-                                          </div>
-                                        </div>
-                                      </div>
                                     </article>
                                   );
                                 })}

@@ -12,7 +12,6 @@ import {
   LogOut,
   Mail,
   Menu,
-  MessageSquare,
   PanelLeftClose,
   ShieldCheck,
   SlidersHorizontal,
@@ -24,7 +23,6 @@ import { type ComponentType, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CaptionExamplesManager } from "./caption-examples-manager";
 import { CaptionRequestsManager } from "./caption-requests-manager";
-import { CaptionsManager } from "./captions-manager";
 import { ConfigTab } from "./config-tab";
 import { CreateTab } from "./create-tab";
 import { DataTab } from "./data-tab";
@@ -53,7 +51,6 @@ type AdminTab =
   | "analytics"
   | "users"
   | "images"
-  | "captions"
   | "humor-flavors"
   | "flavor-steps"
   | "humor-mix"
@@ -84,8 +81,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "analytics", label: "Analytics", icon: BarChart3 },
       { id: "users", label: "Users", icon: Users },
-      { id: "images", label: "Images", icon: ImageIcon },
-      { id: "captions", label: "Captions", icon: MessageSquare },
+      { id: "images", label: "Images + Captions", icon: ImageIcon },
     ],
   },
   {
@@ -170,18 +166,8 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
         return (
           <CreateTab
             isAdmin={canEdit}
-            title="Images"
-            description="Upload new images, replace media, delete memes, and moderate image-linked caption content."
-          />
-        );
-      case "captions":
-        return (
-          <CaptionsManager
-            canManage={canEdit}
-            title="Captions"
-            description="Review, edit, and delete caption rows."
-            includeRequests={false}
-            includeExamples={false}
+            title="Images + Captions"
+            description="Upload new images, replace media, and manage all captions attached to each meme in one place."
           />
         );
       case "humor-flavors":

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Pencil, RotateCcw, Trash2, Undo2, UploadCloud } from "lucide-react";
+import { ArrowLeft, ChevronLeft, ChevronRight, Pencil, RotateCcw, Trash2, Undo2, UploadCloud } from "lucide-react";
 import {
   createCaptionRecord,
   deleteCaptionById,
@@ -50,6 +50,9 @@ type UndoAction =
       imageId: string;
       previousUrl: string;
     };
+
+const CATALOG_PAGE_SIZE = 20;
+const DETAIL_CAPTIONS_PAGE_SIZE = 20;
 
 function str(row: Row, keys: string[]) {
   for (const key of keys) {
@@ -109,6 +112,8 @@ export function CreateTab({
 
   const [viewMode, setViewMode] = useState<"catalog" | "detail">("catalog");
   const [selectedMemeKey, setSelectedMemeKey] = useState("");
+  const [catalogPage, setCatalogPage] = useState(0);
+  const [detailCaptionsPage, setDetailCaptionsPage] = useState(0);
 
   const [file, setFile] = useState<File | null>(null);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
@@ -203,10 +208,37 @@ export function CreateTab({
     }
   }, [catalogMemes, selectedMemeKey]);
 
+  useEffect(() => {
+    setCatalogPage(0);
+  }, [catalogMemes.length]);
+
+  useEffect(() => {
+    setDetailCaptionsPage(0);
+  }, [selectedMemeKey, viewMode]);
+
   const selectedMeme = useMemo(
     () => catalogMemes.find((meme) => meme.key === selectedMemeKey) ?? null,
     [catalogMemes, selectedMemeKey],
   );
+
+  const catalogPageCount = Math.max(1, Math.ceil(catalogMemes.length / CATALOG_PAGE_SIZE));
+  const currentCatalogPage = Math.min(catalogPage, catalogPageCount - 1);
+  const visibleCatalogMemes = catalogMemes.slice(
+    currentCatalogPage * CATALOG_PAGE_SIZE,
+    currentCatalogPage * CATALOG_PAGE_SIZE + CATALOG_PAGE_SIZE,
+  );
+
+  const detailCaptionsPageCount = Math.max(
+    1,
+    Math.ceil((selectedMeme?.captions.length ?? 0) / DETAIL_CAPTIONS_PAGE_SIZE),
+  );
+  const currentDetailCaptionsPage = Math.min(detailCaptionsPage, detailCaptionsPageCount - 1);
+  const visibleSelectedCaptions = selectedMeme
+    ? selectedMeme.captions.slice(
+        currentDetailCaptionsPage * DETAIL_CAPTIONS_PAGE_SIZE,
+        currentDetailCaptionsPage * DETAIL_CAPTIONS_PAGE_SIZE + DETAIL_CAPTIONS_PAGE_SIZE,
+      )
+    : [];
 
   const selectedImageId = selectedMeme?.imageId ?? "";
   const selectedImage = useMemo(() => {
@@ -485,7 +517,7 @@ export function CreateTab({
             value={uploadCaption}
             onChange={(event) => setUploadCaption(event.target.value)}
             placeholder="Optional: write a caption to attach to this uploaded image"
-            className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm"
+            className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-900"
           />
           <div className="mt-3 flex flex-wrap gap-2">
             <button
@@ -513,20 +545,50 @@ export function CreateTab({
       {viewMode === "catalog" ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">Meme Catalog</h2>
-            <button
-              type="button"
-              onClick={loadData}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              Refresh
-            </button>
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Meme Catalog</h2>
+              <p className="mt-1 text-xs text-slate-500">
+                {catalogMemes.length
+                  ? `Showing ${currentCatalogPage * CATALOG_PAGE_SIZE + 1}-${Math.min(
+                      (currentCatalogPage + 1) * CATALOG_PAGE_SIZE,
+                      catalogMemes.length,
+                    )} of ${catalogMemes.length}`
+                  : "No memes found"}
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCatalogPage((page) => Math.max(0, page - 1))}
+                disabled={currentCatalogPage === 0}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Previous memes"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setCatalogPage((page) => Math.min(catalogPageCount - 1, page + 1))}
+                disabled={currentCatalogPage >= catalogPageCount - 1}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label="Next memes"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={loadData}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
           {loading ? (
             <p className="text-sm text-slate-500">Loading memes...</p>
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {catalogMemes.map((meme) => {
+              {visibleCatalogMemes.map((meme) => {
                 const imageId = meme.imageId || "No image_id";
                 const imageUrl = meme.imageUrl;
                 const captionCount = meme.captions.length;
@@ -608,7 +670,7 @@ export function CreateTab({
                       value={newCaption}
                       onChange={(event) => setNewCaption(event.target.value)}
                       placeholder="Write a new caption for this meme"
-                      className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm"
+                      className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm text-slate-900"
                     />
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button
@@ -669,12 +731,44 @@ export function CreateTab({
               </div>
 
               <article className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <h3 className="text-sm font-semibold text-slate-900">All Captions</h3>
-                <div className="mt-2 max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900">All Captions</h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {selectedMeme.captions.length
+                        ? `Showing ${currentDetailCaptionsPage * DETAIL_CAPTIONS_PAGE_SIZE + 1}-${Math.min(
+                            (currentDetailCaptionsPage + 1) * DETAIL_CAPTIONS_PAGE_SIZE,
+                            selectedMeme.captions.length,
+                          )} of ${selectedMeme.captions.length}`
+                        : "No captions found"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setDetailCaptionsPage((page) => Math.max(0, page - 1))}
+                      disabled={currentDetailCaptionsPage === 0}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Previous captions"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDetailCaptionsPage((page) => Math.min(detailCaptionsPageCount - 1, page + 1))}
+                      disabled={currentDetailCaptionsPage >= detailCaptionsPageCount - 1}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Next captions"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-2 space-y-2">
                   {selectedMeme.captions.length === 0 ? (
                     <p className="text-xs text-slate-500">No captions found.</p>
                   ) : (
-                    selectedMeme.captions.map((caption, index) => {
+                    visibleSelectedCaptions.map((caption, index) => {
                       const captionId = getCaptionId(caption);
                       const currentText = getCaptionText(caption);
                       const draft = draftByCaptionId[captionId] ?? currentText;
@@ -685,7 +779,7 @@ export function CreateTab({
                               <textarea
                                 value={draft}
                                 onChange={(event) => setDraftByCaptionId((prev) => ({ ...prev, [captionId]: event.target.value }))}
-                                className="w-full rounded border border-slate-300 px-2 py-1 text-xs"
+                                className="w-full rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900"
                               />
                               <div className="mt-1 flex flex-wrap gap-2">
                                 <button
