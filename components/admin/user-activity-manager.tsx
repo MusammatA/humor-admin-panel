@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
+  ChevronLeft,
+  ChevronRight,
   History,
   ImageIcon,
   LayoutDashboard,
@@ -32,6 +34,8 @@ type UserActivityData = {
 };
 
 type DetailTab = "overview" | "uploaded-images" | "captions" | "vote-history";
+
+const USERS_PER_PAGE = 20;
 
 function asString(value: unknown) {
   return typeof value === "string" ? value : "";
@@ -157,6 +161,7 @@ export function UserActivityManager({
   const [activity, setActivity] = useState<UserActivityData | null>(null);
   const [query, setQuery] = useState("");
   const [selectedUserKey, setSelectedUserKey] = useState("");
+  const [userPage, setUserPage] = useState(0);
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [loading, setLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(false);
@@ -369,6 +374,17 @@ export function UserActivityManager({
     );
   }, [directory, query]);
 
+  const userPageCount = Math.max(1, Math.ceil(filteredUsers.length / USERS_PER_PAGE));
+  const currentUserPage = Math.min(userPage, userPageCount - 1);
+  const visibleUsers = filteredUsers.slice(
+    currentUserPage * USERS_PER_PAGE,
+    currentUserPage * USERS_PER_PAGE + USERS_PER_PAGE,
+  );
+
+  useEffect(() => {
+    setUserPage(0);
+  }, [query]);
+
   useEffect(() => {
     if (!selectedUserKey && filteredUsers.length) {
       setSelectedUserKey(filteredUsers[0].key);
@@ -377,6 +393,16 @@ export function UserActivityManager({
       setSelectedUserKey(filteredUsers[0]?.key ?? "");
     }
   }, [filteredUsers, selectedUserKey]);
+
+  useEffect(() => {
+    const selectedIndex = filteredUsers.findIndex((user) => user.key === selectedUserKey);
+    if (selectedIndex < 0) return;
+
+    const nextPage = Math.floor(selectedIndex / USERS_PER_PAGE);
+    if (nextPage !== currentUserPage) {
+      setUserPage(nextPage);
+    }
+  }, [filteredUsers, selectedUserKey, currentUserPage]);
 
   const selectedUser = filteredUsers.find((user) => user.key === selectedUserKey) ?? null;
 
@@ -610,8 +636,42 @@ export function UserActivityManager({
             <p className="text-sm text-slate-500">Loading user directory...</p>
           ) : (
             <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-              <aside className="max-h-[900px] overflow-auto rounded-xl border border-slate-200">
-                {filteredUsers.map((user) => (
+              <aside className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Users</p>
+                    <p className="text-xs text-slate-500">
+                      {filteredUsers.length
+                        ? `Showing ${currentUserPage * USERS_PER_PAGE + 1}-${Math.min(
+                            (currentUserPage + 1) * USERS_PER_PAGE,
+                            filteredUsers.length,
+                          )} of ${filteredUsers.length}`
+                        : "No users found"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setUserPage((page) => Math.max(0, page - 1))}
+                      disabled={currentUserPage === 0}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Previous users"
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUserPage((page) => Math.min(userPageCount - 1, page + 1))}
+                      disabled={currentUserPage >= userPageCount - 1}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                      aria-label="Next users"
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {visibleUsers.map((user) => (
                   <button
                     key={user.key}
                     onClick={() => setSelectedUserKey(user.key)}
