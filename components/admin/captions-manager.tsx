@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Pencil, Trash2, X } from "lucide-react";
+import { CaptionExamplesManager } from "./caption-examples-manager";
+import { CaptionRequestsManager } from "./caption-requests-manager";
 import { deleteCaptionById, fetchCaptions, updateCaptionText } from "../../lib/services/captions";
 import { getErrorMessage } from "../../lib/services/client";
 import type { Caption as CaptionRow } from "../../types";
@@ -84,122 +86,127 @@ export function CaptionsManager({ canManage }: CaptionsManagerProps) {
   }
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900">Caption Management</h2>
-          <p className="text-sm text-slate-600">
-            {canManage
-              ? "Fetch, edit, and delete caption rows."
-              : "Read-only caption explorer for non-admin users."}
+    <section className="space-y-6">
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Caption Management</h2>
+            <p className="text-sm text-slate-600">
+              {canManage
+                ? "Fetch, edit, and delete caption rows."
+                : "Read-only caption explorer for non-admin users."}
+            </p>
+          </div>
+          <button
+            onClick={loadCaptions}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            type="button"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {error ? (
+          <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+            {error}
           </p>
-        </div>
-        <button
-          onClick={loadCaptions}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-          type="button"
-        >
-          Refresh
-        </button>
-      </div>
+        ) : null}
 
-      {error ? (
-        <p className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
-          {error}
-        </p>
-      ) : null}
-
-      {loading ? (
-        <p className="text-sm text-slate-500">Loading captions...</p>
-      ) : captions.length === 0 ? (
-        <p className="text-sm text-slate-500">No caption rows found.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-slate-500">
-                <th className="px-3 py-2">Caption</th>
-                <th className="px-3 py-2">Topic</th>
-                <th className="px-3 py-2">User</th>
-                {canManage ? <th className="px-3 py-2">Actions</th> : null}
-              </tr>
-            </thead>
-            <tbody>
-              {captions.map((row) => (
-                <tr key={row.id} className="border-b border-slate-100 align-top">
-                  <td className="max-w-xl px-3 py-3 text-slate-800">{getCaptionValue(row)}</td>
-                  <td className="px-3 py-3 text-slate-600">{row.topic ?? "-"}</td>
-                  <td className="px-3 py-3 font-mono text-xs text-slate-500">
-                    {row.user_id ?? "-"}
-                  </td>
-                  {canManage ? (
-                    <td className="px-3 py-3">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => openEditModal(row)}
-                          className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                          type="button"
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(row.id)}
-                          className="inline-flex items-center gap-1 rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
-                          type="button"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  ) : null}
+        {loading ? (
+          <p className="text-sm text-slate-500">Loading captions...</p>
+        ) : captions.length === 0 ? (
+          <p className="text-sm text-slate-500">No caption rows found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-500">
+                  <th className="px-3 py-2">Caption</th>
+                  <th className="px-3 py-2">Topic</th>
+                  <th className="px-3 py-2">User</th>
+                  {canManage ? <th className="px-3 py-2">Actions</th> : null}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {captions.map((row) => (
+                  <tr key={row.id} className="border-b border-slate-100 align-top">
+                    <td className="max-w-xl px-3 py-3 text-slate-800">{getCaptionValue(row)}</td>
+                    <td className="px-3 py-3 text-slate-600">{row.topic ?? "-"}</td>
+                    <td className="px-3 py-3 font-mono text-xs text-slate-500">
+                      {row.user_id ?? "-"}
+                    </td>
+                    {canManage ? (
+                      <td className="px-3 py-3">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => openEditModal(row)}
+                            className="inline-flex items-center gap-1 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                            type="button"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(row.id)}
+                            className="inline-flex items-center gap-1 rounded-md border border-rose-300 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                            type="button"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
-      {editing && canManage ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
-          <div className="w-full max-w-xl rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-base font-semibold text-slate-900">Edit Caption</h3>
-              <button
-                onClick={() => setEditing(null)}
-                className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
-                type="button"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <textarea
-              value={draftText}
-              onChange={(event) => setDraftText(event.target.value)}
-              className="min-h-36 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none ring-slate-300 focus:ring"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => setEditing(null)}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-                type="button"
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveEdit}
-                className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
-                type="button"
-                disabled={saving}
-              >
-                {saving ? "Saving..." : "Save"}
-              </button>
+        {editing && canManage ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
+            <div className="w-full max-w-xl rounded-xl border border-slate-200 bg-white p-5 shadow-lg">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-semibold text-slate-900">Edit Caption</h3>
+                <button
+                  onClick={() => setEditing(null)}
+                  className="rounded-md p-1 text-slate-500 hover:bg-slate-100"
+                  type="button"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <textarea
+                value={draftText}
+                onChange={(event) => setDraftText(event.target.value)}
+                className="min-h-36 w-full rounded-lg border border-slate-300 p-3 text-sm outline-none ring-slate-300 focus:ring"
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  onClick={() => setEditing(null)}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                  type="button"
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveEdit}
+                  className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-60"
+                  type="button"
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </section>
+
+      <CaptionRequestsManager />
+      <CaptionExamplesManager canManage={canManage} />
     </section>
   );
 }

@@ -2,6 +2,7 @@
 
 import { Cpu, Globe2, Plus, RefreshCw, Save, Sparkles, Trash2, Users } from "lucide-react";
 import { useEffect, useState } from "react";
+import { LLMModelsManager } from "./llm-models-manager";
 import {
   addAllowedDomain,
   deleteAllowedDomain,
@@ -629,6 +630,8 @@ export function ConfigTab() {
             </div>
           )}
         </article>
+
+        <LLMModelsManager canManage />
       </div>
 
       <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

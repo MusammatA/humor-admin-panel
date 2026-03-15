@@ -7,6 +7,7 @@ import { CaptionsManager } from "./captions-manager";
 import { ConfigTab } from "./config-tab";
 import { CreateTab } from "./create-tab";
 import { DataTab } from "./data-tab";
+import { TermsManager } from "./terms-manager";
 import { UserActivityManager } from "./user-activity-manager";
 import { WhitelistManager } from "./whitelist-manager";
 
@@ -35,20 +36,6 @@ const TAB_ITEMS: Array<{ id: AdminTab; label: string; icon: ComponentType<{ clas
   { id: "users", label: "Search Users", icon: Search },
   { id: "account", label: "Account", icon: UserRound },
 ];
-
-type PlaceholderTabPanelProps = {
-  title: string;
-  description: string;
-};
-
-function PlaceholderTabPanel({ title, description }: PlaceholderTabPanelProps) {
-  return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
-      <p className="mt-2 max-w-2xl text-sm text-slate-600">{description}</p>
-    </section>
-  );
-}
 
 export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>("data");
@@ -115,12 +102,7 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
         {activeTab === "create" ? <CreateTab isAdmin={canEdit} /> : null}
         {activeTab === "captions" ? <CaptionsManager canManage={canEdit} /> : null}
         {activeTab === "data" ? <DataTab stats={stats} canViewUserData={canEdit} /> : null}
-        {activeTab === "terms" ? (
-          <PlaceholderTabPanel
-            title="Terms"
-            description="This tab is now in the admin navigation, but a dedicated terms CRUD screen still needs to be wired to the live `terms` table."
-          />
-        ) : null}
+        {activeTab === "terms" ? <TermsManager canManage={canEdit} /> : null}
         {activeTab === "config" ? <ConfigTab /> : null}
         {activeTab === "whitelisting" ? <WhitelistManager canManage={canEdit} /> : null}
         {activeTab === "users" ? <UserActivityManager canViewSensitive={canEdit} canMutate={canEdit} /> : null}

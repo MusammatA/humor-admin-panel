@@ -48,6 +48,24 @@ export interface CaptionVote extends DatabaseRow {
   created_at?: string | null;
 }
 
+export interface CaptionRequest extends DatabaseRow {
+  id: string | number;
+  profile_id?: string | null;
+  image_id?: string | null;
+  created_datetime_utc?: string | null;
+}
+
+export interface CaptionExample extends DatabaseRow {
+  id?: string | number;
+  image_description: string;
+  caption: string;
+  explanation: string;
+  priority?: number | null;
+  image_id?: string | null;
+  created_datetime_utc?: string | null;
+  modified_datetime_utc?: string | null;
+}
+
 export interface HumorFlavor extends DatabaseRow {
   id?: string;
   name?: string | null;
@@ -112,6 +130,17 @@ export interface AllowedDomain extends DatabaseRow {
   apex_domain?: string | null;
   created_at?: string | null;
   created_datetime_utc?: string | null;
+}
+
+export interface Term extends DatabaseRow {
+  id?: string | number;
+  term: string;
+  definition: string;
+  example: string;
+  priority?: number | null;
+  term_type_id?: number | null;
+  created_datetime_utc?: string | null;
+  modified_datetime_utc?: string | null;
 }
 
 export interface WhitelistedEmail extends DatabaseRow {
