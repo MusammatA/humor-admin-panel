@@ -4,7 +4,6 @@ import {
   BarChart3,
   BookOpen,
   Bot,
-  Cpu,
   Globe2,
   ImageIcon,
   Link2,
@@ -15,18 +14,15 @@ import {
   ShieldCheck,
   Sparkles,
   Users,
-  FileText,
 } from "lucide-react";
 import { type ComponentType, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CaptionExamplesManager } from "./caption-examples-manager";
-import { CaptionRequestsManager } from "./caption-requests-manager";
+import { CaptionLibraryManager } from "./caption-library-manager";
 import { ConfigTab } from "./config-tab";
 import { CreateTab } from "./create-tab";
 import { DataTab } from "./data-tab";
-import { LLMModelsManager } from "./llm-models-manager";
-import { LLMPromptChainsManager } from "./llm-prompt-chains-manager";
-import { LLMResponsesManager } from "./llm-responses-manager";
+import { LLMPipelineManager } from "./llm-pipeline-manager";
+import { LLMRegistryManager } from "./llm-registry-manager";
 import { TermsManager } from "./terms-manager";
 import { UserActivityManager } from "./user-activity-manager";
 import { WhitelistManager } from "./whitelist-manager";
@@ -51,12 +47,9 @@ type AdminTab =
   | "images"
   | "humor-flavors"
   | "terms"
-  | "caption-requests"
-  | "caption-examples"
-  | "llm-models"
-  | "llm-providers"
-  | "prompt-chains"
-  | "llm-responses"
+  | "caption-library"
+  | "llm-registry"
+  | "llm-pipeline"
   | "allowed-domains"
   | "whitelisted-emails";
 
@@ -85,17 +78,14 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { id: "humor-flavors", label: "Humor Flavors + Steps + Mix", icon: Sparkles },
       { id: "terms", label: "Terms", icon: BookOpen },
-      { id: "caption-requests", label: "Caption Requests", icon: ShieldCheck },
-      { id: "caption-examples", label: "Caption Examples", icon: FileText },
+      { id: "caption-library", label: "Caption Requests + Examples", icon: ShieldCheck },
     ],
   },
   {
     label: "LLM",
     items: [
-      { id: "llm-models", label: "LLM Models", icon: Bot },
-      { id: "llm-providers", label: "LLM Providers", icon: Cpu },
-      { id: "prompt-chains", label: "Prompt Chains", icon: Link2 },
-      { id: "llm-responses", label: "LLM Responses", icon: FileText },
+      { id: "llm-registry", label: "LLM Models + Providers", icon: Bot },
+      { id: "llm-pipeline", label: "Prompt Chains + Responses", icon: Link2 },
     ],
   },
   {
@@ -168,18 +158,12 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
         return <ConfigTab focusSection="humor-flavors" />;
       case "terms":
         return <TermsManager canManage={canEdit} />;
-      case "caption-requests":
-        return <CaptionRequestsManager />;
-      case "caption-examples":
-        return <CaptionExamplesManager canManage={canEdit} />;
-      case "llm-models":
-        return <LLMModelsManager canManage={canEdit} />;
-      case "llm-providers":
-        return <ConfigTab focusSection="llm-providers" />;
-      case "prompt-chains":
-        return <LLMPromptChainsManager />;
-      case "llm-responses":
-        return <LLMResponsesManager />;
+      case "caption-library":
+        return <CaptionLibraryManager canManage={canEdit} />;
+      case "llm-registry":
+        return <LLMRegistryManager canManage={canEdit} />;
+      case "llm-pipeline":
+        return <LLMPipelineManager />;
       case "allowed-domains":
         return <ConfigTab focusSection="allowed-domains" />;
       case "whitelisted-emails":

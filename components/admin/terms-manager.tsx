@@ -18,8 +18,15 @@ type TermDraft = {
   termTypeId: string;
 };
 
+const TERMS_PAGE_SIZE = 20;
+
 function getTermId(row: Term) {
   return typeof row.id === "undefined" ? "" : String(row.id);
+}
+
+function clipText(value: string, length: number) {
+  if (value.length <= length) return value;
+  return `${value.slice(0, Math.max(0, length - 1)).trimEnd()}...`;
 }
 
 function toDraft(row: Term): TermDraft {
@@ -41,6 +48,8 @@ function parseOptionalNumber(value: string) {
 export function TermsManager({ canManage }: TermsManagerProps) {
   const [terms, setTerms] = useState<Term[]>([]);
   const [drafts, setDrafts] = useState<Record<string, TermDraft>>({});
+  const [selectedTermId, setSelectedTermId] = useState("");
+  const [currentPage, setCurrentPage] = useState(0);
   const [newTerm, setNewTerm] = useState<TermDraft>({
     term: "",
     definition: "",
@@ -83,6 +92,41 @@ export function TermsManager({ canManage }: TermsManagerProps) {
       ),
     );
   }, [terms]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(terms.length / TERMS_PAGE_SIZE) - 1);
+    setCurrentPage((page) => Math.min(page, maxPage));
+  }, [terms.length]);
+
+  const pageCount = Math.max(1, Math.ceil(terms.length / TERMS_PAGE_SIZE));
+  const pageStart = currentPage * TERMS_PAGE_SIZE;
+  const pagedTerms = terms.slice(pageStart, pageStart + TERMS_PAGE_SIZE);
+  const pageEnd = Math.min(pageStart + pagedTerms.length, terms.length);
+  const selectedTerm =
+    pagedTerms.find((row) => getTermId(row) === selectedTermId) ??
+    terms.find((row) => getTermId(row) === selectedTermId) ??
+    pagedTerms[0] ??
+    null;
+
+  useEffect(() => {
+    if (!selectedTerm) {
+      if (selectedTermId) setSelectedTermId("");
+      return;
+    }
+
+    const selectedId = getTermId(selectedTerm);
+    if (selectedId && selectedId !== selectedTermId) {
+      setSelectedTermId(selectedId);
+    }
+  }, [selectedTerm, selectedTermId]);
+
+  useEffect(() => {
+    if (pagedTerms.length === 0) return;
+    const selectedOnPage = pagedTerms.some((row) => getTermId(row) === selectedTermId);
+    if (!selectedOnPage) {
+      setSelectedTermId(getTermId(pagedTerms[0]));
+    }
+  }, [currentPage, pagedTerms, selectedTermId]);
 
   async function handleAdd() {
     if (!canManage) return;
@@ -278,79 +322,167 @@ export function TermsManager({ canManage }: TermsManagerProps) {
           <p className="text-sm text-slate-500">No terms returned.</p>
         ) : (
           <div className="space-y-4">
-            {terms.map((row) => {
-              const id = getTermId(row);
-              const draft = drafts[id] ?? toDraft(row);
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Term Directory</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Showing {terms.length === 0 ? 0 : pageStart + 1}-{pageEnd} of {terms.length}
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.max(0, page - 1))}
+                  disabled={currentPage === 0}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <p className="text-xs text-slate-500">
+                  Page {currentPage + 1} of {pageCount}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((page) => Math.min(pageCount - 1, page + 1))}
+                  disabled={currentPage >= pageCount - 1}
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
 
-              return (
-                <article key={id || JSON.stringify(row)} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_10rem_auto_auto]">
-                    <input
-                      type="text"
-                      value={draft.term}
-                      onChange={(event) =>
-                        setDrafts((prev) => ({ ...prev, [id]: { ...draft, term: event.target.value } }))
-                      }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                      disabled={!canManage || busy || !id}
-                    />
-                    <input
-                      type="number"
-                      value={draft.priority}
-                      onChange={(event) =>
-                        setDrafts((prev) => ({ ...prev, [id]: { ...draft, priority: event.target.value } }))
-                      }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                      disabled={!canManage || busy || !id}
-                    />
-                    <input
-                      type="number"
-                      value={draft.termTypeId}
-                      onChange={(event) =>
-                        setDrafts((prev) => ({ ...prev, [id]: { ...draft, termTypeId: event.target.value } }))
-                      }
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                      disabled={!canManage || busy || !id}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleSave(row)}
-                      disabled={!canManage || busy || !id}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Save className="h-3.5 w-3.5" />
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(row)}
-                      disabled={!canManage || busy || !id}
-                      className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete
-                    </button>
-                  </div>
-                  <textarea
-                    value={draft.definition}
-                    onChange={(event) =>
-                      setDrafts((prev) => ({ ...prev, [id]: { ...draft, definition: event.target.value } }))
-                    }
-                    className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                    disabled={!canManage || busy || !id}
-                  />
-                  <textarea
-                    value={draft.example}
-                    onChange={(event) =>
-                      setDrafts((prev) => ({ ...prev, [id]: { ...draft, example: event.target.value } }))
-                    }
-                    className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                    disabled={!canManage || busy || !id}
-                  />
-                  <p className="mt-2 font-mono text-xs text-slate-500">{id || "No id column"}</p>
-                </article>
-              );
-            })}
+            <div className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div className="space-y-2">
+                  {pagedTerms.map((row) => {
+                    const id = getTermId(row);
+                    const selected = selectedTermId === id;
+                    return (
+                      <button
+                        key={id || JSON.stringify(row)}
+                        type="button"
+                        onClick={() => setSelectedTermId(id)}
+                        className={`w-full rounded-xl border px-3 py-3 text-left transition ${
+                          selected
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-100"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <p className="text-sm font-semibold">{row.term || "Untitled term"}</p>
+                          <div className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${selected ? "bg-white/15 text-white" : "bg-slate-100 text-slate-600"}`}>
+                            P{typeof row.priority === "number" ? row.priority : 0}
+                          </div>
+                        </div>
+                        <p className={`mt-2 text-xs leading-relaxed ${selected ? "text-slate-200" : "text-slate-500"}`}>
+                          {clipText(row.definition ?? "", 90) || "No definition yet."}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {selectedTerm ? (() => {
+                const id = getTermId(selectedTerm);
+                const draft = drafts[id] ?? toDraft(selectedTerm);
+
+                return (
+                  <article className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-900">{draft.term || "Selected Term"}</h3>
+                        <p className="mt-1 font-mono text-xs text-slate-500">{id || "No id column"}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleSave(selectedTerm)}
+                          disabled={!canManage || busy || !id}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Save className="h-3.5 w-3.5" />
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(selectedTerm)}
+                          disabled={!canManage || busy || !id}
+                          className="inline-flex items-center justify-center gap-2 rounded-lg border border-rose-300 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_10rem_10rem]">
+                      <input
+                        type="text"
+                        value={draft.term}
+                        onChange={(event) =>
+                          setDrafts((prev) => ({ ...prev, [id]: { ...draft, term: event.target.value } }))
+                        }
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                        disabled={!canManage || busy || !id}
+                      />
+                      <input
+                        type="number"
+                        value={draft.priority}
+                        onChange={(event) =>
+                          setDrafts((prev) => ({ ...prev, [id]: { ...draft, priority: event.target.value } }))
+                        }
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                        disabled={!canManage || busy || !id}
+                      />
+                      <input
+                        type="number"
+                        value={draft.termTypeId}
+                        onChange={(event) =>
+                          setDrafts((prev) => ({ ...prev, [id]: { ...draft, termTypeId: event.target.value } }))
+                        }
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                        disabled={!canManage || busy || !id}
+                      />
+                    </div>
+
+                    <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                          Definition
+                        </label>
+                        <textarea
+                          value={draft.definition}
+                          onChange={(event) =>
+                            setDrafts((prev) => ({ ...prev, [id]: { ...draft, definition: event.target.value } }))
+                          }
+                          className="mt-2 min-h-48 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                          disabled={!canManage || busy || !id}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+                          Example
+                        </label>
+                        <textarea
+                          value={draft.example}
+                          onChange={(event) =>
+                            setDrafts((prev) => ({ ...prev, [id]: { ...draft, example: event.target.value } }))
+                          }
+                          className="mt-2 min-h-48 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                          disabled={!canManage || busy || !id}
+                        />
+                      </div>
+                    </div>
+                  </article>
+                );
+              })() : (
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-6 text-sm text-slate-500">
+                  Select a term to inspect or edit it.
+                </div>
+              )}
+            </div>
           </div>
         )}
       </section>
