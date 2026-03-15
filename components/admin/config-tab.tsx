@@ -186,33 +186,31 @@ function getSettledError<T>(result: PromiseSettledResult<T>) {
 const CONFIG_SECTION_COPY: Record<ConfigFocusSection, { title: string; description: string }> = {
   all: {
     title: "Config",
-    description:
-      "Read from profiles and manage humor flavors, their steps, the generation mix settings, llm providers, llm models, and allowed domains.",
+    description: "Manage app settings and reference data.",
   },
   profiles: {
     title: "Profiles Snapshot",
-    description: "Review a read-only sample of profile records used by the admin dashboard.",
+    description: "Quick sample of profile records.",
   },
   "humor-flavors": {
     title: "Humor Flavors + Steps + Mix",
-    description:
-      "Browse available humor flavors, inspect their step sequence, and review the generation mix settings that affect how many captions get produced.",
+    description: "View flavors, their steps, and related mix settings.",
   },
   "humor-mix": {
     title: "Generation Mix Settings",
-    description: "Review and update the low-level mix rows that influence the caption generation pipeline.",
+    description: "Adjust low-level generation settings.",
   },
   "llm-providers": {
     title: "LLM Providers",
-    description: "Add, rename, and remove the LLM providers available to the admin tools.",
+    description: "Manage the provider list.",
   },
   "llm-models": {
     title: "LLM Models",
-    description: "Manage the live llm_models table separately from providers.",
+    description: "Manage the model list.",
   },
   "allowed-domains": {
     title: "Allowed Domains",
-    description: "Manage the signup domain allowlist used by admin access checks.",
+    description: "Choose which signup domains are allowed.",
   },
 };
 
@@ -627,8 +625,7 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
                 <h2 className="text-lg font-semibold text-slate-900">Generation Mix Settings</h2>
               </div>
               <p className="mt-2 text-sm text-slate-600">
-                These settings live alongside the flavor pipeline. They control low-level generation behavior such as
-                how many caption options the system should ask for when a mix row runs.
+                Small settings that change how generation runs.
               </p>
               {loading ? (
                 <p className="mt-4 text-sm text-slate-500">Loading mix settings...</p>

@@ -414,8 +414,7 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
               <h2 className="text-lg font-semibold text-slate-900">LLM Models + Providers</h2>
             </div>
             <p className="mt-2 max-w-3xl text-sm text-slate-600">
-              Manage the provider registry and the models attached to it in one place. They are part of the same LLM
-              configuration layer, so this view keeps them together and paginated.
+              Keep models and providers together in one registry.
             </p>
           </div>
           <button

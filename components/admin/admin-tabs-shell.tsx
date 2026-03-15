@@ -134,7 +134,7 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
             stats={stats}
             canViewUserData={canEdit}
             title="Analytics"
-            description="Track aggregate caption, image, topic, and user trends across the dataset."
+            description="See overall activity and trends."
           />
         );
       case "users":
@@ -143,7 +143,7 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
             canViewSensitive={canEdit}
             canMutate={canEdit}
             title="Users"
-            description="Search people, inspect created images and captions, analyze vote behavior, and moderate activity."
+            description="Browse users and review their activity."
           />
         );
       case "images":
@@ -151,7 +151,7 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
           <CreateTab
             isAdmin={canEdit}
             title="Images + Captions"
-            description="Upload new images, replace media, and manage all captions attached to each meme in one place."
+            description="Manage images and the captions attached to them."
           />
         );
       case "humor-flavors":

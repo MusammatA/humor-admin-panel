@@ -241,7 +241,7 @@ export function TermsManager({ canManage }: TermsManagerProps) {
               <h2 className="text-lg font-semibold text-slate-900">Terms</h2>
             </div>
             <p className="mt-2 max-w-2xl text-sm text-slate-600">
-              Create, read, update, and delete rows from <code className="rounded bg-slate-100 px-1.5 py-0.5">terms</code>.
+              Manage glossary words and their notes.
             </p>
           </div>
           <button

@@ -287,8 +287,7 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
               <h2 className="text-lg font-semibold text-slate-900">Caption Requests + Examples</h2>
             </div>
             <p className="mt-2 max-w-3xl text-sm text-slate-600">
-              Review incoming caption requests and manage the example captions that guide the model. These live in the
-              same caption workflow, so they now share one admin view.
+              Review requests and edit example captions in one place.
             </p>
           </div>
           <button

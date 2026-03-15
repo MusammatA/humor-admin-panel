@@ -126,8 +126,7 @@ export function LLMPipelineManager({ responseLimit = 1000 }: LLMPipelineManagerP
               <h2 className="text-lg font-semibold text-slate-900">Prompt Chains + LLM Responses</h2>
             </div>
             <p className="mt-2 max-w-3xl text-sm text-slate-600">
-              Prompt chains and model responses are part of the same execution trail. Select a chain on the left to
-              inspect the responses produced for it on the right.
+              Pick a chain and review the responses tied to it.
             </p>
           </div>
           <button
