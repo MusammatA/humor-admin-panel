@@ -19,7 +19,6 @@ export type ConfigFocusSection =
   | "all"
   | "profiles"
   | "humor-flavors"
-  | "flavor-steps"
   | "humor-mix"
   | "llm-providers"
   | "llm-models"
@@ -146,12 +145,8 @@ const CONFIG_SECTION_COPY: Record<ConfigFocusSection, { title: string; descripti
     description: "Review a read-only sample of profile records used by the admin dashboard.",
   },
   "humor-flavors": {
-    title: "Humor Flavors",
-    description: "Browse available humor flavors and inspect the currently selected flavor steps.",
-  },
-  "flavor-steps": {
-    title: "Flavor Steps",
-    description: "Inspect the step sequence attached to each humor flavor.",
+    title: "Humor Flavors + Steps",
+    description: "Browse available humor flavors, pick one, and inspect the step sequence attached to that flavor.",
   },
   "humor-mix": {
     title: "Humor Mix",
@@ -423,7 +418,7 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   const hasTableErrors = Object.keys(tableErrors).length > 0;
   const copy = CONFIG_SECTION_COPY[focusSection];
   const showProfiles = focusSection === "all" || focusSection === "profiles";
-  const showFlavorSection = focusSection === "all" || focusSection === "humor-flavors" || focusSection === "flavor-steps";
+  const showFlavorSection = focusSection === "all" || focusSection === "humor-flavors";
   const showHumorMix = focusSection === "all" || focusSection === "humor-mix";
   const showProviders = focusSection === "all" || focusSection === "llm-providers";
   const showModels = focusSection === "all" || focusSection === "llm-models";
@@ -506,9 +501,7 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5 text-slate-700" />
-                <h2 className="text-lg font-semibold text-slate-900">
-                  {focusSection === "flavor-steps" ? "Flavor Steps" : "Humor Flavors"}
-                </h2>
+                <h2 className="text-lg font-semibold text-slate-900">Humor Flavors + Steps</h2>
               </div>
               <p className="mt-2 text-sm text-slate-600">
                 Read flavors to populate a selector, then inspect the related steps for the chosen flavor.

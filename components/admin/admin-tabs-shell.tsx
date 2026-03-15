@@ -8,7 +8,6 @@ import {
   Globe2,
   ImageIcon,
   Link2,
-  ListOrdered,
   LogOut,
   Mail,
   Menu,
@@ -52,7 +51,6 @@ type AdminTab =
   | "users"
   | "images"
   | "humor-flavors"
-  | "flavor-steps"
   | "humor-mix"
   | "terms"
   | "caption-requests"
@@ -87,8 +85,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: "Config",
     items: [
-      { id: "humor-flavors", label: "Humor Flavors", icon: Sparkles },
-      { id: "flavor-steps", label: "Flavor Steps", icon: ListOrdered },
+      { id: "humor-flavors", label: "Humor Flavors + Steps", icon: Sparkles },
       { id: "humor-mix", label: "Humor Mix", icon: SlidersHorizontal },
       { id: "terms", label: "Terms", icon: BookOpen },
       { id: "caption-requests", label: "Caption Requests", icon: ShieldCheck },
@@ -172,8 +169,6 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
         );
       case "humor-flavors":
         return <ConfigTab focusSection="humor-flavors" />;
-      case "flavor-steps":
-        return <ConfigTab focusSection="flavor-steps" />;
       case "humor-mix":
         return <ConfigTab focusSection="humor-mix" />;
       case "terms":
