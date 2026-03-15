@@ -1,15 +1,30 @@
-import type { LLMProvider } from "../../types";
+import type { LLMModel, LLMProvider } from "../../types";
 import { getSupabaseBrowserClientOrThrow } from "./client";
 
+type MatchValue = string | number;
+
 type ProviderMatch = {
-  id?: string;
+  id?: MatchValue;
   name?: string;
 };
 
-function applyProviderMatch<T extends { eq(column: string, value: string): T }>(request: T, match: ProviderMatch) {
-  if (match.id) return request.eq("id", match.id);
+type ModelMatch = {
+  id?: MatchValue;
+  name?: string;
+  providerModelId?: string;
+};
+
+function applyProviderMatch<T extends { eq(column: string, value: MatchValue): T }>(request: T, match: ProviderMatch) {
+  if (typeof match.id !== "undefined") return request.eq("id", match.id);
   if (match.name) return request.eq("name", match.name);
   throw new Error("Provider id or name is required.");
+}
+
+function applyModelMatch<T extends { eq(column: string, value: MatchValue): T }>(request: T, match: ModelMatch) {
+  if (typeof match.id !== "undefined") return request.eq("id", match.id);
+  if (match.providerModelId) return request.eq("provider_model_id", match.providerModelId);
+  if (match.name) return request.eq("name", match.name);
+  throw new Error("Model id, provider_model_id, or name is required.");
 }
 
 export async function fetchProviders(limit = 200) {
@@ -52,8 +67,42 @@ export async function deleteProvider(match: ProviderMatch) {
   }
 }
 
-// The current schema uses `llm_providers`, so these model aliases target that table.
-export const fetchModels = fetchProviders;
-export const addModel = addProvider;
-export const updateModel = updateProvider;
-export const deleteModel = deleteProvider;
+export async function fetchModels(limit = 200) {
+  const supabase = getSupabaseBrowserClientOrThrow();
+  const { data, error } = await supabase.from("llm_models").select("*").limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as LLMModel[];
+}
+
+export async function addModel(model: Pick<LLMModel, "name"> & Partial<LLMModel>) {
+  const supabase = getSupabaseBrowserClientOrThrow();
+  const { error } = await supabase.from("llm_models").insert([model]);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function updateModel(match: ModelMatch, updates: Partial<LLMModel>) {
+  const supabase = getSupabaseBrowserClientOrThrow();
+  const request = applyModelMatch(supabase.from("llm_models").update(updates), match);
+  const { error } = await request;
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function deleteModel(match: ModelMatch) {
+  const supabase = getSupabaseBrowserClientOrThrow();
+  const request = applyModelMatch(supabase.from("llm_models").delete(), match);
+  const { error } = await request;
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}

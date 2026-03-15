@@ -1,12 +1,14 @@
 "use client";
 
-import { BarChart3, Menu, PlusSquare, Search, Settings2, UserRound, X } from "lucide-react";
+import { BarChart3, FileText, Menu, MessageSquare, PlusSquare, Search, Settings2, ShieldCheck, UserRound, X } from "lucide-react";
 import { type ComponentType, useState } from "react";
+import { AccountTab } from "./account-tab";
+import { CaptionsManager } from "./captions-manager";
 import { ConfigTab } from "./config-tab";
 import { CreateTab } from "./create-tab";
 import { DataTab } from "./data-tab";
 import { UserActivityManager } from "./user-activity-manager";
-import { AccountTab } from "./account-tab";
+import { WhitelistManager } from "./whitelist-manager";
 
 type TopicCount = { topic: string; count: number };
 
@@ -21,15 +23,32 @@ type AdminTabsShellProps = {
   adminEmail?: string;
 };
 
-type AdminTab = "create" | "data" | "config" | "users" | "account";
+type AdminTab = "create" | "captions" | "data" | "terms" | "config" | "whitelisting" | "users" | "account";
 
 const TAB_ITEMS: Array<{ id: AdminTab; label: string; icon: ComponentType<{ className?: string }> }> = [
   { id: "create", label: "Create", icon: PlusSquare },
+  { id: "captions", label: "Captions", icon: MessageSquare },
   { id: "data", label: "Data", icon: BarChart3 },
+  { id: "terms", label: "Terms", icon: FileText },
   { id: "config", label: "Config", icon: Settings2 },
+  { id: "whitelisting", label: "Whitelisting", icon: ShieldCheck },
   { id: "users", label: "Search Users", icon: Search },
   { id: "account", label: "Account", icon: UserRound },
 ];
+
+type PlaceholderTabPanelProps = {
+  title: string;
+  description: string;
+};
+
+function PlaceholderTabPanel({ title, description }: PlaceholderTabPanelProps) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <p className="mt-2 max-w-2xl text-sm text-slate-600">{description}</p>
+    </section>
+  );
+}
 
 export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) {
   const [activeTab, setActiveTab] = useState<AdminTab>("data");
@@ -94,8 +113,16 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
 
       <div className="mx-auto max-w-7xl p-6 pt-20 md:p-10 md:pt-20">
         {activeTab === "create" ? <CreateTab isAdmin={canEdit} /> : null}
+        {activeTab === "captions" ? <CaptionsManager canManage={canEdit} /> : null}
         {activeTab === "data" ? <DataTab stats={stats} canViewUserData={canEdit} /> : null}
+        {activeTab === "terms" ? (
+          <PlaceholderTabPanel
+            title="Terms"
+            description="This tab is now in the admin navigation, but a dedicated terms CRUD screen still needs to be wired to the live `terms` table."
+          />
+        ) : null}
         {activeTab === "config" ? <ConfigTab /> : null}
+        {activeTab === "whitelisting" ? <WhitelistManager canManage={canEdit} /> : null}
         {activeTab === "users" ? <UserActivityManager canViewSensitive={canEdit} canMutate={canEdit} /> : null}
         {activeTab === "account" ? <AccountTab /> : null}
       </div>

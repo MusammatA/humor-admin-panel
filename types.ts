@@ -95,11 +95,29 @@ export interface LLMProvider extends DatabaseRow {
   created_at?: string | null;
 }
 
+export interface LLMModel extends DatabaseRow {
+  id?: string | number;
+  name: string;
+  llm_provider_id?: string | number | null;
+  provider_model_id?: string | null;
+  is_temperature_supported?: boolean | null;
+  created_at?: string | null;
+  created_datetime_utc?: string | null;
+}
+
 export interface AllowedDomain extends DatabaseRow {
   id?: string;
   domain: string;
   host?: string | null;
   apex_domain?: string | null;
+  created_at?: string | null;
+  created_datetime_utc?: string | null;
+}
+
+export interface WhitelistedEmail extends DatabaseRow {
+  id?: string;
+  email?: string | null;
+  Superadmin?: boolean | null;
   created_at?: string | null;
   created_datetime_utc?: string | null;
 }
