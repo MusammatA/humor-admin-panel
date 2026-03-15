@@ -127,7 +127,7 @@ function sidebarName(adminEmail: string) {
 }
 
 export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) {
-  const [activeTab, setActiveTab] = useState<AdminTab>("allowed-domains");
+  const [activeTab, setActiveTab] = useState<AdminTab>("analytics");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const canEdit = true;
@@ -214,7 +214,18 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
   }
 
   return (
-    <main className="min-h-screen bg-[#07070b] text-white">
+    <main
+      className="min-h-screen bg-[#050912] text-white"
+      style={{
+        backgroundImage: [
+          "radial-gradient(900px 520px at 18% -10%, rgba(90, 148, 204, 0.18), transparent 60%)",
+          "radial-gradient(760px 460px at 82% 8%, rgba(78, 169, 106, 0.15), transparent 58%)",
+          "linear-gradient(to bottom, rgba(148, 163, 184, 0.08) 1px, transparent 1px)",
+          "linear-gradient(to right, rgba(148, 163, 184, 0.08) 1px, transparent 1px)",
+        ].join(", "),
+        backgroundSize: "auto, auto, 30px 30px, 30px 30px",
+      }}
+    >
       <button
         type="button"
         onClick={() => setSidebarOpen((open) => !open)}
@@ -240,8 +251,9 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
       >
         <div className="border-b border-white/10 px-6 py-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-fuchsia-500 to-violet-600 shadow-[0_12px_35px_rgba(139,92,246,0.35)]">
-              <ShieldCheck className="h-5 w-5 text-white" />
+            <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-white/15 bg-[linear-gradient(145deg,rgba(255,255,255,0.18),rgba(255,255,255,0.04))] shadow-[0_16px_40px_rgba(0,0,0,0.35)]">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_24%_22%,rgba(255,255,255,0.28),transparent_42%),linear-gradient(135deg,rgba(90,148,204,0.95),rgba(78,169,106,0.9))]" />
+              <ShieldCheck className="relative h-5 w-5 text-white drop-shadow-[0_0_14px_rgba(255,255,255,0.35)]" />
             </div>
             <div>
               <p className="text-lg font-semibold text-white">Admin</p>
@@ -271,11 +283,11 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
                       }}
                       className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
                         selected
-                          ? "bg-violet-500/20 text-violet-200 shadow-[inset_0_0_0_1px_rgba(167,139,250,0.35)]"
+                          ? "bg-[linear-gradient(135deg,rgba(90,148,204,0.18),rgba(78,169,106,0.18))] text-[#e6f5ff] shadow-[inset_0_0_0_1px_rgba(120,211,191,0.32),0_12px_30px_rgba(4,18,31,0.22)]"
                           : "text-slate-300 hover:bg-white/5 hover:text-white"
                       }`}
                     >
-                      <Icon className={`h-4 w-4 ${selected ? "text-violet-300" : "text-slate-500"}`} />
+                      <Icon className={`h-4 w-4 ${selected ? "text-[#9ce9d6]" : "text-slate-500"}`} />
                       <span>{item.label}</span>
                     </button>
                   );
@@ -300,7 +312,7 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
       </aside>
 
       <div className="min-h-screen lg:pl-72">
-        <div className="mx-auto max-w-7xl px-4 pb-10 pt-20 sm:px-8 lg:px-10 lg:pt-10">
+        <div className="w-full px-4 pb-10 pt-20 sm:px-8 lg:px-10 lg:pt-10 2xl:px-14">
           {renderActivePanel()}
         </div>
       </div>

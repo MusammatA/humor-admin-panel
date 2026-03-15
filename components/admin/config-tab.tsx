@@ -428,6 +428,8 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   const showProviders = focusSection === "all" || focusSection === "llm-providers";
   const showModels = focusSection === "all" || focusSection === "llm-models";
   const showDomains = focusSection === "all" || focusSection === "allowed-domains";
+  const upperSectionCount = [showProfiles, showFlavorSection].filter(Boolean).length;
+  const middleSectionCount = [showHumorMix, showProviders, showModels].filter(Boolean).length;
 
   return (
     <section className="space-y-6">
@@ -463,7 +465,7 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
       ) : null}
 
       {showProfiles || showFlavorSection ? (
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className={`grid gap-6 ${upperSectionCount > 1 ? "xl:grid-cols-2" : ""}`}>
           {showProfiles ? (
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2">
@@ -574,7 +576,7 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
       ) : null}
 
       {showHumorMix || showProviders || showModels ? (
-        <div className="grid gap-6 xl:grid-cols-2">
+        <div className={`grid gap-6 ${middleSectionCount > 1 ? "xl:grid-cols-2" : ""}`}>
           {showHumorMix ? (
             <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
