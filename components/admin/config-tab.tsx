@@ -73,7 +73,7 @@ function getProfileId(row: Profile) {
 }
 
 function getProfileName(row: Profile) {
-  return str(row, ["full_name", "name", "username"]);
+  return str(row, ["full_name", "name", "username", "first_name", "last_name"]);
 }
 
 function getProfileEmail(row: Profile) {
@@ -93,11 +93,11 @@ function getMixId(row: HumorMix) {
 }
 
 function getStepTitle(row: HumorStep) {
-  return str(row, ["title", "step", "step_text", "description", "id"]);
+  return str(row, ["title", "step", "step_text", "instruction", "description", "id"]);
 }
 
 function getStepBody(row: HumorStep) {
-  return str(row, ["description", "step_text", "step", "title"]);
+  return str(row, ["description", "step_text", "instruction", "step", "title"]);
 }
 
 function getStepOrder(row: HumorStep) {
@@ -117,7 +117,7 @@ function getDomainId(row: AllowedDomain) {
 }
 
 function getDomainValue(row: AllowedDomain) {
-  return str(row, ["domain", "host"]);
+  return str(row, ["domain", "apex_domain", "host"]);
 }
 
 function getSettledError<T>(result: PromiseSettledResult<T>) {

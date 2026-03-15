@@ -6,8 +6,12 @@ export interface Profile extends DatabaseRow {
   email?: string | null;
   username?: string | null;
   full_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   is_superadmin?: boolean | null;
   created_at?: string | null;
+  created_datetime_utc?: string | null;
+  modified_datetime_utc?: string | null;
 }
 
 export interface ImageRecord extends DatabaseRow {
@@ -63,6 +67,7 @@ export interface HumorStep extends DatabaseRow {
   step?: string | null;
   step_text?: string | null;
   description?: string | null;
+  instruction?: string | null;
   order_index?: number | string | null;
   step_order?: number | string | null;
   position?: number | string | null;
@@ -74,7 +79,10 @@ export interface HumorMix extends DatabaseRow {
   val: unknown;
   name?: string | null;
   label?: string | null;
+  humor_flavor_id?: string | number | null;
+  caption_count?: number | null;
   created_at?: string | null;
+  created_datetime_utc?: string | null;
 }
 
 export interface LLMProvider extends DatabaseRow {
@@ -91,7 +99,9 @@ export interface AllowedDomain extends DatabaseRow {
   id?: string;
   domain: string;
   host?: string | null;
+  apex_domain?: string | null;
   created_at?: string | null;
+  created_datetime_utc?: string | null;
 }
 
 export interface LLMPromptChain extends DatabaseRow {

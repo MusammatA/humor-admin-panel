@@ -6,11 +6,10 @@ type DomainMatch = {
   domain?: string;
 };
 
-function applyDomainMatch<T extends { eq(column: string, value: string): T }>(request: T, match: DomainMatch) {
-  if (match.id) return request.eq("id", match.id);
-  if (match.domain) return request.eq("domain", match.domain);
-  throw new Error("Domain id or domain value is required.");
-}
+const DOMAIN_TABLES = [
+  { name: "allowed_domains", valueColumn: "domain" },
+  { name: "allowed_signup_domains", valueColumn: "apex_domain" },
+] as const;
 
 export async function fetchProfilesPreview(limit = 40) {
   const supabase = getSupabaseBrowserClientOrThrow();
@@ -25,40 +24,95 @@ export async function fetchProfilesPreview(limit = 40) {
 
 export async function fetchAllowedDomains(limit = 200) {
   const supabase = getSupabaseBrowserClientOrThrow();
-  const { data, error } = await supabase.from("allowed_domains").select("*").limit(limit);
+  let lastError: Error | null = null;
 
-  if (error) {
-    throw new Error(error.message);
+  for (const table of DOMAIN_TABLES) {
+    const { data, error } = await supabase.from(table.name).select("*").limit(limit);
+    if (error) {
+      lastError = new Error(error.message);
+      continue;
+    }
+
+    return ((data ?? []) as AllowedDomain[]).map((row) => ({
+      ...row,
+      domain: row.domain ?? String(row[table.valueColumn] ?? ""),
+    }));
   }
 
-  return (data ?? []) as AllowedDomain[];
+  if (lastError) {
+    throw lastError;
+  }
+
+  return [] as AllowedDomain[];
 }
 
 export async function addAllowedDomain(domain: string) {
   const supabase = getSupabaseBrowserClientOrThrow();
-  const { error } = await supabase.from("allowed_domains").insert([{ domain }]);
+  let lastError: Error | null = null;
 
-  if (error) {
-    throw new Error(error.message);
+  for (const table of DOMAIN_TABLES) {
+    const { error } = await supabase.from(table.name).insert([{ [table.valueColumn]: domain }]);
+    if (!error) {
+      return;
+    }
+    lastError = new Error(error.message);
+  }
+
+  if (lastError) {
+    throw lastError;
   }
 }
 
 export async function updateAllowedDomain(match: DomainMatch, domain: string) {
   const supabase = getSupabaseBrowserClientOrThrow();
-  const request = applyDomainMatch(supabase.from("allowed_domains").update({ domain }), match);
-  const { error } = await request;
+  let lastError: Error | null = null;
 
-  if (error) {
-    throw new Error(error.message);
+  for (const table of DOMAIN_TABLES) {
+    let request = supabase.from(table.name).update({ [table.valueColumn]: domain });
+    if (match.id) {
+      request = request.eq("id", match.id);
+    } else if (match.domain) {
+      request = request.eq(table.valueColumn, match.domain);
+    } else {
+      throw new Error("Domain id or domain value is required.");
+    }
+
+    const { error } = await request;
+    if (!error) {
+      return;
+    }
+
+    lastError = new Error(error.message);
+  }
+
+  if (lastError) {
+    throw lastError;
   }
 }
 
 export async function deleteAllowedDomain(match: DomainMatch) {
   const supabase = getSupabaseBrowserClientOrThrow();
-  const request = applyDomainMatch(supabase.from("allowed_domains").delete(), match);
-  const { error } = await request;
+  let lastError: Error | null = null;
 
-  if (error) {
-    throw new Error(error.message);
+  for (const table of DOMAIN_TABLES) {
+    let request = supabase.from(table.name).delete();
+    if (match.id) {
+      request = request.eq("id", match.id);
+    } else if (match.domain) {
+      request = request.eq(table.valueColumn, match.domain);
+    } else {
+      throw new Error("Domain id or domain value is required.");
+    }
+
+    const { error } = await request;
+    if (!error) {
+      return;
+    }
+
+    lastError = new Error(error.message);
+  }
+
+  if (lastError) {
+    throw lastError;
   }
 }

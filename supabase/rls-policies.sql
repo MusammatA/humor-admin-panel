@@ -24,9 +24,15 @@ grant execute on function private.is_superadmin() to authenticated;
 
 alter table if exists public.profiles enable row level security;
 alter table if exists public.humor_flavors enable row level security;
+alter table if exists public.humor_flavor_steps enable row level security;
 alter table if exists public.humor_mix enable row level security;
+alter table if exists public.humor_flavor_mix enable row level security;
 alter table if exists public.llm_providers enable row level security;
+alter table if exists public.llm_models enable row level security;
+alter table if exists public.llm_prompt_chains enable row level security;
 alter table if exists public.allowed_domains enable row level security;
+alter table if exists public.allowed_signup_domains enable row level security;
+alter table if exists public.whitelisted_emails enable row level security;
 alter table if exists public.images enable row level security;
 alter table if exists public.captions enable row level security;
 alter table if exists public.caption_votes enable row level security;
@@ -50,12 +56,35 @@ drop policy if exists "humor_flavors_read_all" on public.humor_flavors;
 create policy "humor_flavors_read_all"
 on public.humor_flavors
 for select
-to public
+to authenticated
 using (true);
 
-drop policy if exists "humor_mix_superadmin_all" on public.humor_mix;
-create policy "humor_mix_superadmin_all"
-on public.humor_mix
+drop policy if exists "humor_flavor_steps_read_authenticated" on public.humor_flavor_steps;
+create policy "humor_flavor_steps_read_authenticated"
+on public.humor_flavor_steps
+for select
+to authenticated
+using (true);
+
+do $$
+begin
+  if to_regclass('public.humor_mix') is not null then
+    execute 'drop policy if exists "humor_mix_superadmin_all" on public.humor_mix';
+    execute $policy$
+      create policy "humor_mix_superadmin_all"
+      on public.humor_mix
+      for all
+      to authenticated
+      using (private.is_superadmin())
+      with check (private.is_superadmin())
+    $policy$;
+  end if;
+end
+$$;
+
+drop policy if exists "humor_flavor_mix_superadmin_all" on public.humor_flavor_mix;
+create policy "humor_flavor_mix_superadmin_all"
+on public.humor_flavor_mix
 for all
 to authenticated
 using (private.is_superadmin())
@@ -69,9 +98,49 @@ to authenticated
 using (private.is_superadmin())
 with check (private.is_superadmin());
 
-drop policy if exists "allowed_domains_superadmin_all" on public.allowed_domains;
-create policy "allowed_domains_superadmin_all"
-on public.allowed_domains
+drop policy if exists "llm_models_superadmin_all" on public.llm_models;
+create policy "llm_models_superadmin_all"
+on public.llm_models
+for all
+to authenticated
+using (private.is_superadmin())
+with check (private.is_superadmin());
+
+drop policy if exists "llm_prompt_chains_superadmin_all" on public.llm_prompt_chains;
+create policy "llm_prompt_chains_superadmin_all"
+on public.llm_prompt_chains
+for all
+to authenticated
+using (private.is_superadmin())
+with check (private.is_superadmin());
+
+do $$
+begin
+  if to_regclass('public.allowed_domains') is not null then
+    execute 'drop policy if exists "allowed_domains_superadmin_all" on public.allowed_domains';
+    execute $policy$
+      create policy "allowed_domains_superadmin_all"
+      on public.allowed_domains
+      for all
+      to authenticated
+      using (private.is_superadmin())
+      with check (private.is_superadmin())
+    $policy$;
+  end if;
+end
+$$;
+
+drop policy if exists "allowed_signup_domains_superadmin_all" on public.allowed_signup_domains;
+create policy "allowed_signup_domains_superadmin_all"
+on public.allowed_signup_domains
+for all
+to authenticated
+using (private.is_superadmin())
+with check (private.is_superadmin());
+
+drop policy if exists "whitelisted_emails_superadmin_all" on public.whitelisted_emails;
+create policy "whitelisted_emails_superadmin_all"
+on public.whitelisted_emails
 for all
 to authenticated
 using (private.is_superadmin())

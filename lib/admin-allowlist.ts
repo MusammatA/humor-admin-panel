@@ -53,14 +53,23 @@ async function readAllowedDomainsFromDatabase() {
   const client = createClient(SUPABASE_URL, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error } = await client.from("allowed_domains").select("domain").limit(500);
-  if (error) return null;
+  const sources = [
+    { table: "allowed_domains", column: "domain" },
+    { table: "allowed_signup_domains", column: "apex_domain" },
+  ] as const;
 
-  return new Set(
-    (data ?? [])
-      .map((row) => normalizeDomain((row as { domain?: unknown }).domain))
-      .filter(Boolean),
-  );
+  for (const source of sources) {
+    const { data, error } = await client.from(source.table).select(source.column).limit(500);
+    if (error) continue;
+
+    return new Set(
+      (data ?? [])
+        .map((row) => normalizeDomain((row as Record<string, unknown>)[source.column]))
+        .filter(Boolean),
+    );
+  }
+
+  return null;
 }
 
 export async function isDomainAllowlistedIfConfigured(email: string): Promise<boolean> {
