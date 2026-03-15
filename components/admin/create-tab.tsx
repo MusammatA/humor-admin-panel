@@ -24,6 +24,8 @@ type Row = Record<string, unknown>;
 type CreateTabProps = {
   isAdmin: boolean;
   bucketName?: string;
+  title?: string;
+  description?: string;
 };
 
 type CatalogMeme = {
@@ -93,7 +95,12 @@ function getCaptionImageUrl(row: Row) {
   return str(row, ["image_url", "public_url", "cdn_url", "url"]);
 }
 
-export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
+export function CreateTab({
+  isAdmin,
+  bucketName = "images",
+  title = "Create",
+  description,
+}: CreateTabProps) {
   const [images, setImages] = useState<Row[]>([]);
   const [captions, setCaptions] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -450,11 +457,12 @@ export function CreateTab({ isAdmin, bucketName = "images" }: CreateTabProps) {
   return (
     <section className="space-y-6">
       <header>
-        <h1 className="text-3xl font-semibold text-slate-900">Create</h1>
+        <h1 className="text-3xl font-semibold text-slate-900">{title}</h1>
         <p className="mt-2 text-sm text-slate-600">
-          {isAdmin
-            ? "Open a meme from the catalog to manage all captions, replace image media, and moderate quickly."
-            : "Browse the meme catalog and open a meme to read all caption text."}
+          {description ??
+            (isAdmin
+              ? "Open a meme from the catalog to manage all captions, replace image media, and moderate quickly."
+              : "Browse the meme catalog and open a meme to read all caption text.")}
         </p>
       </header>
 

@@ -1,4 +1,4 @@
-import type { LLMModel, LLMProvider } from "../../types";
+import type { LLMModel, LLMProvider, LLMPromptChain, LLMResponse } from "../../types";
 import { getSupabaseBrowserClientOrThrow } from "./client";
 
 type MatchValue = string | number;
@@ -105,4 +105,34 @@ export async function deleteModel(match: ModelMatch) {
   if (error) {
     throw new Error(error.message);
   }
+}
+
+export async function fetchPromptChains(limit = 500) {
+  const supabase = getSupabaseBrowserClientOrThrow();
+  const { data, error } = await supabase
+    .from("llm_prompt_chains")
+    .select("*")
+    .order("id", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as LLMPromptChain[];
+}
+
+export async function fetchResponses(limit = 500) {
+  const supabase = getSupabaseBrowserClientOrThrow();
+  const { data, error } = await supabase
+    .from("llm_model_responses")
+    .select("*")
+    .order("created_datetime_utc", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? []) as LLMResponse[];
 }

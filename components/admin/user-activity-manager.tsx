@@ -126,9 +126,16 @@ function userMatch(row: GenericRow, user: DirectoryUser) {
 type UserActivityManagerProps = {
   canViewSensitive: boolean;
   canMutate: boolean;
+  title?: string;
+  description?: string;
 };
 
-export function UserActivityManager({ canViewSensitive, canMutate }: UserActivityManagerProps) {
+export function UserActivityManager({
+  canViewSensitive,
+  canMutate,
+  title = "User & Meme Activity Audit",
+  description = "Search users, inspect created images and captions, analyze vote behavior, and moderate data.",
+}: UserActivityManagerProps) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [profiles, setProfiles] = useState<GenericRow[]>([]);
   const [images, setImages] = useState<GenericRow[]>([]);
@@ -423,7 +430,7 @@ export function UserActivityManager({ canViewSensitive, canMutate }: UserActivit
         <>
           <div className="mb-2 flex items-center gap-2">
             <UserRound className="h-5 w-5 text-slate-700" />
-            <h2 className="text-lg font-semibold text-slate-900">User & Meme Activity Audit</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
           </div>
           <p className="text-sm text-slate-600">Unavailable. View users by signing in as admin.</p>
         </>
@@ -432,10 +439,8 @@ export function UserActivityManager({ canViewSensitive, canMutate }: UserActivit
         <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">User & Meme Activity Audit</h2>
-          <p className="text-sm text-slate-600">
-            Search users, inspect created images and captions, analyze vote behavior, and moderate data.
-          </p>
+          <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+          <p className="text-sm text-slate-600">{description}</p>
         </div>
         <button
           onClick={loadAllData}

@@ -19,9 +19,19 @@ function getTextColumn(row: CaptionRow): "caption_text" | "text" {
 
 type CaptionsManagerProps = {
   canManage: boolean;
+  title?: string;
+  description?: string;
+  includeRequests?: boolean;
+  includeExamples?: boolean;
 };
 
-export function CaptionsManager({ canManage }: CaptionsManagerProps) {
+export function CaptionsManager({
+  canManage,
+  title = "Caption Management",
+  description,
+  includeRequests = true,
+  includeExamples = true,
+}: CaptionsManagerProps) {
   const [captions, setCaptions] = useState<CaptionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,11 +100,12 @@ export function CaptionsManager({ canManage }: CaptionsManagerProps) {
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">Caption Management</h2>
+            <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
             <p className="text-sm text-slate-600">
-              {canManage
-                ? "Fetch, edit, and delete caption rows."
-                : "Read-only caption explorer for non-admin users."}
+              {description ??
+                (canManage
+                  ? "Fetch, edit, and delete caption rows."
+                  : "Read-only caption explorer for non-admin users.")}
             </p>
           </div>
           <button
@@ -205,8 +216,8 @@ export function CaptionsManager({ canManage }: CaptionsManagerProps) {
         ) : null}
       </section>
 
-      <CaptionRequestsManager />
-      <CaptionExamplesManager canManage={canManage} />
+      {includeRequests ? <CaptionRequestsManager /> : null}
+      {includeExamples ? <CaptionExamplesManager canManage={canManage} /> : null}
     </section>
   );
 }

@@ -16,6 +16,8 @@ type DataTabProps = {
     error: string | null;
   };
   canViewUserData?: boolean;
+  title?: string;
+  description?: string;
 };
 
 type BubbleItem = {
@@ -289,7 +291,12 @@ function packBubbles(items: BubbleItem[], width = 860, height = 620): PackedBubb
   return nodes;
 }
 
-export function DataTab({ stats, canViewUserData = false }: DataTabProps) {
+export function DataTab({
+  stats,
+  canViewUserData = false,
+  title = "Data",
+  description = "Top 20 caption words by frequency across all loaded caption rows.",
+}: DataTabProps) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [captions, setCaptions] = useState<Row[]>([]);
   const [images, setImages] = useState<Row[]>([]);
@@ -486,10 +493,8 @@ export function DataTab({ stats, canViewUserData = false }: DataTabProps) {
   return (
     <section className="space-y-6">
       <header>
-        <h1 className="text-3xl font-semibold text-slate-900">Data</h1>
-        <p className="mt-2 text-sm text-slate-600">
-          Top 20 caption words by frequency across all loaded caption rows.
-        </p>
+        <h1 className="text-3xl font-semibold text-slate-900">{title}</h1>
+        <p className="mt-2 text-sm text-slate-600">{description}</p>
         {loading ? (
           <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
             <div className="mb-1 flex items-center justify-between text-xs text-slate-600">

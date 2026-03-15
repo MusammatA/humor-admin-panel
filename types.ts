@@ -152,11 +152,24 @@ export interface WhitelistedEmail extends DatabaseRow {
 }
 
 export interface LLMPromptChain extends DatabaseRow {
-  id: string;
-  name: string;
-  provider_id?: string | null;
-  system_prompt?: string | null;
-  model?: string | null;
-  is_active?: boolean | null;
+  id: string | number;
+  caption_request_id?: string | number | null;
   created_at?: string | null;
+  created_datetime_utc?: string | null;
+}
+
+export interface LLMResponse extends DatabaseRow {
+  id: string;
+  llm_model_response?: string | null;
+  processing_time_seconds?: number | null;
+  llm_model_id?: string | number | null;
+  profile_id?: string | null;
+  caption_request_id?: string | number | null;
+  llm_system_prompt?: string | null;
+  llm_user_prompt?: string | null;
+  llm_temperature?: number | string | null;
+  humor_flavor_id?: string | number | null;
+  llm_prompt_chain_id?: string | number | null;
+  humor_flavor_step_id?: string | number | null;
+  created_datetime_utc?: string | null;
 }
