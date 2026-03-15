@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search, Trash2, UserRound } from "lucide-react";
+import {
+  History,
+  ImageIcon,
+  LayoutDashboard,
+  MessageSquare,
+  Search,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
 import { deleteStorageObjectByPublicUrl } from "../../lib/supabase-storage";
 
@@ -22,6 +30,8 @@ type UserActivityData = {
   userVotes: GenericRow[];
   captionVotes: GenericRow[];
 };
+
+type DetailTab = "overview" | "uploaded-images" | "captions" | "vote-history";
 
 function asString(value: unknown) {
   return typeof value === "string" ? value : "";
@@ -147,6 +157,7 @@ export function UserActivityManager({
   const [activity, setActivity] = useState<UserActivityData | null>(null);
   const [query, setQuery] = useState("");
   const [selectedUserKey, setSelectedUserKey] = useState("");
+  const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [loading, setLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -373,6 +384,10 @@ export function UserActivityManager({
     loadSelectedUserActivity(selectedUser);
   }, [selectedUser?.key]);
 
+  useEffect(() => {
+    setDetailTab("overview");
+  }, [selectedUser?.key]);
+
   const details = useMemo(() => {
     if (!selectedUser || !activity) return null;
 
@@ -423,6 +438,7 @@ export function UserActivityManager({
       downVotes,
       createdImages: activity.createdImages,
       captionsByImage,
+      imageById,
       upVotedImages: Array.from(upImageIds).map((id) => imageById.get(id) ?? ({ id } as GenericRow)),
       downVotedImages: Array.from(downImageIds).map((id) => imageById.get(id) ?? ({ id } as GenericRow)),
       captionById,
@@ -517,6 +533,35 @@ export function UserActivityManager({
 
     await loadSelectedUserActivity(selectedUser);
   }
+
+  const detailTabs: Array<{
+    id: DetailTab;
+    label: string;
+    icon: typeof LayoutDashboard;
+    count?: number;
+  }> = details
+    ? [
+        { id: "overview", label: "Overview", icon: LayoutDashboard },
+        {
+          id: "uploaded-images",
+          label: "Uploaded Images",
+          icon: ImageIcon,
+          count: details.createdImages.length,
+        },
+        {
+          id: "captions",
+          label: "Captions",
+          icon: MessageSquare,
+          count: details.userCaptions.length,
+        },
+        {
+          id: "vote-history",
+          label: "Vote History",
+          icon: History,
+          count: details.userVotes.length,
+        },
+      ]
+    : [];
 
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -638,133 +683,285 @@ export function UserActivityManager({
 
                     {canViewSensitive ? (
                       <div className="rounded-xl border border-slate-200 p-4">
-                        <h4 className="text-sm font-semibold text-slate-900">Created Images + Captions</h4>
-                        <p className="mb-3 text-xs text-slate-500">
-                          For each uploaded image: image preview, raw image ID, and all captions attached to that meme.
-                        </p>
-                        {!details.createdImages.length ? (
-                          <p className="text-sm text-slate-500">No created images found for this user.</p>
-                        ) : (
-                          <div className="space-y-3">
-                            {details.createdImages.map((image) => {
-                              const imageId = getImageId(image);
-                              const imageUrl = getImageUrl(image);
-                              const imageCaptions = details.captionsByImage.get(imageId) ?? [];
-                              return (
-                                <article key={imageId} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                                    <p className="font-mono text-xs text-slate-700">Image ID: {imageId || "N/A"}</p>
-                                    {canMutate ? (
-                                      <button
-                                        onClick={() => handleDeleteImage(image)}
-                                        className="inline-flex items-center gap-1 rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
-                                        type="button"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                        Delete Image
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                  {imageUrl ? (
-                                    // eslint-disable-next-line @next/next/no-img-element
-                                    <img
-                                      src={imageUrl}
-                                      alt={imageId || "Meme image"}
-                                      className="mb-2 h-48 w-full rounded-md object-cover"
-                                    />
-                                  ) : (
-                                    <p className="mb-2 text-xs text-slate-500">No image URL available in row data.</p>
-                                  )}
-                                  <ul className="space-y-1">
-                                    {imageCaptions.length ? (
-                                      imageCaptions.map((caption) => {
-                                        const captionId = getCaptionId(caption);
-                                        const captionStat = details.voteStatsByCaption.get(captionId);
-                                        return (
-                                          <li
-                                            key={captionId}
-                                            className="rounded-md bg-white px-2 py-1 text-xs text-slate-700"
-                                          >
-                                            <p>
-                                              <span className="font-semibold">Caption:</span> {getCaptionText(caption) || "(empty)"}
-                                            </p>
-                                            <p className="mt-1 text-slate-500">
-                                              Caption ID: {captionId || "N/A"} | Votes: +{captionStat?.up ?? 0} / -
-                                              {captionStat?.down ?? 0} (score {captionStat?.total ?? 0})
-                                            </p>
-                                          </li>
-                                        );
-                                      })
-                                    ) : (
-                                      <li className="text-xs text-slate-500">No captions found for this image.</li>
-                                    )}
-                                  </ul>
-                                </article>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
+                        <div className="mb-4 flex flex-wrap gap-2">
+                          {detailTabs.map((tab) => {
+                            const Icon = tab.icon;
+                            const selected = detailTab === tab.id;
+                            return (
+                              <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setDetailTab(tab.id)}
+                                className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm ${
+                                  selected
+                                    ? "border-slate-900 bg-slate-900 text-white"
+                                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                                }`}
+                              >
+                                <Icon className="h-4 w-4" />
+                                <span>{tab.label}</span>
+                                {typeof tab.count === "number" ? (
+                                  <span
+                                    className={`rounded-full px-2 py-0.5 text-xs ${
+                                      selected ? "bg-white/15 text-white" : "bg-slate-100 text-slate-600"
+                                    }`}
+                                  >
+                                    {tab.count}
+                                  </span>
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
 
-                    {canViewSensitive ? (
-                      <div className="rounded-xl border border-slate-200 p-4">
-                        <h4 className="text-sm font-semibold text-slate-900">Vote History (Detailed)</h4>
-                        <p className="mb-3 text-xs text-slate-500">
-                          Every current vote row by this user with vote value, target caption, associated image, and delete action.
-                        </p>
-                        {!details.userVotes.length ? (
-                          <p className="text-sm text-slate-500">No votes found for this user.</p>
-                        ) : (
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full text-left text-xs">
-                              <thead>
-                                <tr className="border-b border-slate-200 text-slate-500">
-                                  <th className="px-2 py-2">Vote</th>
-                                  <th className="px-2 py-2">Caption</th>
-                                  <th className="px-2 py-2">Image ID</th>
-                                  <th className="px-2 py-2">Timestamp</th>
-                                  <th className="px-2 py-2">Action</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {details.userVotes.map((vote) => {
-                                  const caption = details.captionById.get(getVoteCaptionId(vote));
-                                  const voteValue = getVoteValue(vote);
+                        {detailTab === "overview" ? (
+                          <div className="grid gap-4 xl:grid-cols-3">
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Uploads</p>
+                              <p className="mt-2 text-3xl font-semibold text-slate-900">{details.createdImages.length}</p>
+                              <p className="mt-2 text-sm text-slate-600">Images uploaded by this user.</p>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Created Captions</p>
+                              <p className="mt-2 text-3xl font-semibold text-slate-900">{details.userCaptions.length}</p>
+                              <p className="mt-2 text-sm text-slate-600">Caption rows authored by this user.</p>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">Vote Rows</p>
+                              <p className="mt-2 text-3xl font-semibold text-slate-900">{details.userVotes.length}</p>
+                              <p className="mt-2 text-sm text-slate-600">Current vote rows tied to this profile.</p>
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-4 xl:col-span-2">
+                              <h4 className="text-sm font-semibold text-slate-900">Recent Uploaded Images</h4>
+                              <p className="mb-3 text-xs text-slate-500">
+                                Latest uploads with attached captions.
+                              </p>
+                              {!details.createdImages.length ? (
+                                <p className="text-sm text-slate-500">No uploaded images found for this user.</p>
+                              ) : (
+                                <div className="space-y-3">
+                                  {details.createdImages.slice(0, 3).map((image) => {
+                                    const imageId = getImageId(image);
+                                    const imageCaptions = details.captionsByImage.get(imageId) ?? [];
+                                    return (
+                                      <div key={imageId} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                                        <p className="font-mono text-xs text-slate-700">Image ID: {imageId || "N/A"}</p>
+                                        <p className="mt-2 text-xs text-slate-600">
+                                          {imageCaptions.length} attached caption{imageCaptions.length === 1 ? "" : "s"}
+                                        </p>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                              <h4 className="text-sm font-semibold text-slate-900">Vote Mix</h4>
+                              <div className="mt-3 space-y-2 text-sm text-slate-700">
+                                <p>Upvotes: {details.upVotes.length}</p>
+                                <p>Downvotes: {details.downVotes.length}</p>
+                                <p>Neutral: {details.userVotes.length - details.upVotes.length - details.downVotes.length}</p>
+                                <p>Images Upvoted: {details.upVotedImages.length}</p>
+                                <p>Images Downvoted: {details.downVotedImages.length}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {detailTab === "uploaded-images" ? (
+                          <>
+                            <h4 className="text-sm font-semibold text-slate-900">Uploaded Images + Attached Captions</h4>
+                            <p className="mb-3 text-xs text-slate-500">
+                              Large previews use contain mode so the whole image stays visible.
+                            </p>
+                            {!details.createdImages.length ? (
+                              <p className="text-sm text-slate-500">No created images found for this user.</p>
+                            ) : (
+                              <div className="space-y-4">
+                                {details.createdImages.map((image) => {
+                                  const imageId = getImageId(image);
+                                  const imageUrl = getImageUrl(image);
+                                  const imageCaptions = details.captionsByImage.get(imageId) ?? [];
                                   return (
-                                    <tr
-                                      key={
-                                        rowString(vote, ["id"]) ||
-                                        `${getVoteCaptionId(vote)}-${getTimestamp(vote)}`
-                                      }
-                                      className="border-b border-slate-100"
-                                    >
-                                      <td className="px-2 py-2 font-semibold text-slate-800">{voteValue}</td>
-                                      <td className="max-w-xl px-2 py-2 text-slate-700">
-                                        {getCaptionText(caption ?? {}) || "(caption unavailable)"}
-                                      </td>
-                                      <td className="px-2 py-2 font-mono text-slate-600">
-                                        {getCaptionImageId(caption ?? {}) || "N/A"}
-                                      </td>
-                                      <td className="px-2 py-2 text-slate-500">{getTimestamp(vote) || "N/A"}</td>
-                                      <td className="px-2 py-2">
+                                    <article key={imageId} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                        <div>
+                                          <p className="font-mono text-xs text-slate-700">Image ID: {imageId || "N/A"}</p>
+                                          <p className="mt-1 text-xs text-slate-500">
+                                            {imageCaptions.length} attached caption{imageCaptions.length === 1 ? "" : "s"}
+                                          </p>
+                                        </div>
                                         {canMutate ? (
                                           <button
-                                            onClick={() => handleDeleteVote(vote)}
-                                            className="rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                                            onClick={() => handleDeleteImage(image)}
+                                            className="inline-flex items-center gap-1 rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
                                             type="button"
                                           >
-                                            Delete Vote
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                            Delete Image
                                           </button>
                                         ) : null}
-                                      </td>
-                                    </tr>
+                                      </div>
+                                      {imageUrl ? (
+                                        <div className="mb-3 flex min-h-[24rem] items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-[radial-gradient(circle_at_top,rgba(90,148,204,0.12),transparent_45%),linear-gradient(180deg,rgba(248,245,238,0.95),rgba(237,245,239,0.9))] p-4">
+                                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                                          <img
+                                            src={imageUrl}
+                                            alt={imageId || "Meme image"}
+                                            className="max-h-[34rem] w-full rounded-lg object-contain"
+                                          />
+                                        </div>
+                                      ) : (
+                                        <p className="mb-3 text-xs text-slate-500">No image URL available in row data.</p>
+                                      )}
+                                      <ul className="space-y-2">
+                                        {imageCaptions.length ? (
+                                          imageCaptions.map((caption) => {
+                                            const captionId = getCaptionId(caption);
+                                            const captionStat = details.voteStatsByCaption.get(captionId);
+                                            return (
+                                              <li
+                                                key={captionId}
+                                                className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700"
+                                              >
+                                                <p>
+                                                  <span className="font-semibold">Caption:</span> {getCaptionText(caption) || "(empty)"}
+                                                </p>
+                                                <p className="mt-1 text-slate-500">
+                                                  Caption ID: {captionId || "N/A"} | Votes: +{captionStat?.up ?? 0} / -
+                                                  {captionStat?.down ?? 0} (score {captionStat?.total ?? 0})
+                                                </p>
+                                              </li>
+                                            );
+                                          })
+                                        ) : (
+                                          <li className="text-xs text-slate-500">No captions found for this image.</li>
+                                        )}
+                                      </ul>
+                                    </article>
                                   );
                                 })}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
+                              </div>
+                            )}
+                          </>
+                        ) : null}
+
+                        {detailTab === "captions" ? (
+                          <>
+                            <h4 className="text-sm font-semibold text-slate-900">Created Captions</h4>
+                            <p className="mb-3 text-xs text-slate-500">
+                              Captions authored by this user, with associated image and vote totals.
+                            </p>
+                            {!details.userCaptions.length ? (
+                              <p className="text-sm text-slate-500">No created captions found for this user.</p>
+                            ) : (
+                              <div className="space-y-4">
+                                {details.userCaptions.map((caption) => {
+                                  const captionId = getCaptionId(caption);
+                                  const imageId = getCaptionImageId(caption);
+                                  const image = details.imageById.get(imageId) ?? {};
+                                  const imageUrl = getImageUrl(image);
+                                  const captionStat = details.voteStatsByCaption.get(captionId);
+                                  return (
+                                    <article key={captionId} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                                      <div className="grid gap-4 lg:grid-cols-[280px_1fr]">
+                                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                                          {imageUrl ? (
+                                            <div className="flex min-h-[18rem] items-center justify-center bg-[radial-gradient(circle_at_top,rgba(90,148,204,0.1),transparent_45%),linear-gradient(180deg,rgba(248,245,238,0.9),rgba(237,245,239,0.85))] p-3">
+                                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                                              <img
+                                                src={imageUrl}
+                                                alt={imageId || "Caption image"}
+                                                className="max-h-[24rem] w-full rounded-lg object-contain"
+                                              />
+                                            </div>
+                                          ) : (
+                                            <div className="flex min-h-[18rem] items-center justify-center p-4 text-xs text-slate-500">
+                                              No image preview
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div>
+                                          <p className="font-mono text-xs text-slate-500">Caption ID: {captionId || "N/A"}</p>
+                                          <p className="mt-1 font-mono text-xs text-slate-500">Image ID: {imageId || "N/A"}</p>
+                                          <p className="mt-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm leading-relaxed text-slate-800">
+                                            {getCaptionText(caption) || "(empty caption)"}
+                                          </p>
+                                          <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-3">
+                                            <p>Upvotes: {captionStat?.up ?? 0}</p>
+                                            <p>Downvotes: {captionStat?.down ?? 0}</p>
+                                            <p>Score: {captionStat?.total ?? 0}</p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </>
+                        ) : null}
+
+                        {detailTab === "vote-history" ? (
+                          <>
+                            <h4 className="text-sm font-semibold text-slate-900">Vote History</h4>
+                            <p className="mb-3 text-xs text-slate-500">
+                              Every current vote row by this user with vote value, target caption, associated image, and delete action.
+                            </p>
+                            {!details.userVotes.length ? (
+                              <p className="text-sm text-slate-500">No votes found for this user.</p>
+                            ) : (
+                              <div className="overflow-x-auto">
+                                <table className="min-w-full text-left text-xs">
+                                  <thead>
+                                    <tr className="border-b border-slate-200 text-slate-500">
+                                      <th className="px-2 py-2">Vote</th>
+                                      <th className="px-2 py-2">Caption</th>
+                                      <th className="px-2 py-2">Image ID</th>
+                                      <th className="px-2 py-2">Timestamp</th>
+                                      <th className="px-2 py-2">Action</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {details.userVotes.map((vote) => {
+                                      const caption = details.captionById.get(getVoteCaptionId(vote));
+                                      const voteValue = getVoteValue(vote);
+                                      return (
+                                        <tr
+                                          key={
+                                            rowString(vote, ["id"]) ||
+                                            `${getVoteCaptionId(vote)}-${getTimestamp(vote)}`
+                                          }
+                                          className="border-b border-slate-100"
+                                        >
+                                          <td className="px-2 py-2 font-semibold text-slate-800">{voteValue}</td>
+                                          <td className="max-w-xl px-2 py-2 text-slate-700">
+                                            {getCaptionText(caption ?? {}) || "(caption unavailable)"}
+                                          </td>
+                                          <td className="px-2 py-2 font-mono text-slate-600">
+                                            {getCaptionImageId(caption ?? {}) || "N/A"}
+                                          </td>
+                                          <td className="px-2 py-2 text-slate-500">{getTimestamp(vote) || "N/A"}</td>
+                                          <td className="px-2 py-2">
+                                            {canMutate ? (
+                                              <button
+                                                onClick={() => handleDeleteVote(vote)}
+                                                className="rounded-md border border-rose-300 px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                                                type="button"
+                                              >
+                                                Delete Vote
+                                              </button>
+                                            ) : null}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </>
+                        ) : null}
                       </div>
                     ) : null}
                   </>
