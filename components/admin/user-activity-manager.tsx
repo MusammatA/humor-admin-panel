@@ -36,6 +36,9 @@ type UserActivityData = {
 type DetailTab = "overview" | "uploaded-images" | "captions" | "vote-history";
 
 const USERS_PER_PAGE = 20;
+const IMAGES_PER_PAGE = 4;
+const CAPTIONS_PER_PAGE = 10;
+const VOTES_PER_PAGE = 20;
 
 function asString(value: unknown) {
   return typeof value === "string" ? value : "";
@@ -163,6 +166,9 @@ export function UserActivityManager({
   const [selectedUserKey, setSelectedUserKey] = useState("");
   const [userPage, setUserPage] = useState(0);
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
+  const [imagesPage, setImagesPage] = useState(0);
+  const [captionsPage, setCaptionsPage] = useState(0);
+  const [votesPage, setVotesPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [activityLoading, setActivityLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -394,16 +400,6 @@ export function UserActivityManager({
     }
   }, [filteredUsers, selectedUserKey]);
 
-  useEffect(() => {
-    const selectedIndex = filteredUsers.findIndex((user) => user.key === selectedUserKey);
-    if (selectedIndex < 0) return;
-
-    const nextPage = Math.floor(selectedIndex / USERS_PER_PAGE);
-    if (nextPage !== currentUserPage) {
-      setUserPage(nextPage);
-    }
-  }, [filteredUsers, selectedUserKey, currentUserPage]);
-
   const selectedUser = filteredUsers.find((user) => user.key === selectedUserKey) ?? null;
 
   useEffect(() => {
@@ -412,6 +408,9 @@ export function UserActivityManager({
 
   useEffect(() => {
     setDetailTab("overview");
+    setImagesPage(0);
+    setCaptionsPage(0);
+    setVotesPage(0);
   }, [selectedUser?.key]);
 
   const details = useMemo(() => {
@@ -589,6 +588,49 @@ export function UserActivityManager({
       ]
     : [];
 
+  const imagesPageCount = Math.max(
+    1,
+    Math.ceil((details?.createdImages.length ?? 0) / IMAGES_PER_PAGE),
+  );
+  const currentImagesPage = Math.min(imagesPage, imagesPageCount - 1);
+  const visibleCreatedImages = details
+    ? details.createdImages.slice(
+        currentImagesPage * IMAGES_PER_PAGE,
+        currentImagesPage * IMAGES_PER_PAGE + IMAGES_PER_PAGE,
+      )
+    : [];
+
+  const captionsPageCount = Math.max(
+    1,
+    Math.ceil((details?.userCaptions.length ?? 0) / CAPTIONS_PER_PAGE),
+  );
+  const currentCaptionsPage = Math.min(captionsPage, captionsPageCount - 1);
+  const visibleCaptions = details
+    ? details.userCaptions.slice(
+        currentCaptionsPage * CAPTIONS_PER_PAGE,
+        currentCaptionsPage * CAPTIONS_PER_PAGE + CAPTIONS_PER_PAGE,
+      )
+    : [];
+
+  const votesPageCount = Math.max(
+    1,
+    Math.ceil((details?.userVotes.length ?? 0) / VOTES_PER_PAGE),
+  );
+  const currentVotesPage = Math.min(votesPage, votesPageCount - 1);
+  const visibleVotes = details
+    ? details.userVotes.slice(
+        currentVotesPage * VOTES_PER_PAGE,
+        currentVotesPage * VOTES_PER_PAGE + VOTES_PER_PAGE,
+      )
+    : [];
+
+  function selectUserPage(nextPage: number) {
+    const boundedPage = Math.max(0, Math.min(userPageCount - 1, nextPage));
+    setUserPage(boundedPage);
+    const nextUser = filteredUsers[boundedPage * USERS_PER_PAGE];
+    if (nextUser) setSelectedUserKey(nextUser.key);
+  }
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       {!canViewSensitive ? (
@@ -652,7 +694,7 @@ export function UserActivityManager({
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={() => setUserPage((page) => Math.max(0, page - 1))}
+                      onClick={() => selectUserPage(currentUserPage - 1)}
                       disabled={currentUserPage === 0}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                       aria-label="Previous users"
@@ -661,7 +703,7 @@ export function UserActivityManager({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setUserPage((page) => Math.min(userPageCount - 1, page + 1))}
+                      onClick={() => selectUserPage(currentUserPage + 1)}
                       disabled={currentUserPage >= userPageCount - 1}
                       className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                       aria-label="Next users"
@@ -830,15 +872,47 @@ export function UserActivityManager({
 
                         {detailTab === "uploaded-images" ? (
                           <>
-                            <h4 className="text-sm font-semibold text-slate-900">Uploaded Images + Attached Captions</h4>
-                            <p className="mb-3 text-xs text-slate-500">
-                              Large previews use contain mode so the whole image stays visible.
-                            </p>
+                            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <h4 className="text-sm font-semibold text-slate-900">Uploaded Images + Attached Captions</h4>
+                                <p className="text-xs text-slate-500">
+                                  Large previews use contain mode so the whole image stays visible.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs text-slate-500">
+                                  {details.createdImages.length
+                                    ? `Showing ${currentImagesPage * IMAGES_PER_PAGE + 1}-${Math.min(
+                                        (currentImagesPage + 1) * IMAGES_PER_PAGE,
+                                        details.createdImages.length,
+                                      )} of ${details.createdImages.length}`
+                                    : "No uploaded images"}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => setImagesPage((page) => Math.max(0, page - 1))}
+                                  disabled={currentImagesPage === 0}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-label="Previous uploaded images"
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setImagesPage((page) => Math.min(imagesPageCount - 1, page + 1))}
+                                  disabled={currentImagesPage >= imagesPageCount - 1}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-label="Next uploaded images"
+                                >
+                                  <ChevronRight className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
                             {!details.createdImages.length ? (
                               <p className="text-sm text-slate-500">No created images found for this user.</p>
                             ) : (
                               <div className="space-y-4">
-                                {details.createdImages.map((image) => {
+                                {visibleCreatedImages.map((image) => {
                                   const imageId = getImageId(image);
                                   const imageUrl = getImageUrl(image);
                                   const imageCaptions = details.captionsByImage.get(imageId) ?? [];
@@ -908,15 +982,47 @@ export function UserActivityManager({
 
                         {detailTab === "captions" ? (
                           <>
-                            <h4 className="text-sm font-semibold text-slate-900">Created Captions</h4>
-                            <p className="mb-3 text-xs text-slate-500">
-                              Captions authored by this user, with associated image and vote totals.
-                            </p>
+                            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <h4 className="text-sm font-semibold text-slate-900">Created Captions</h4>
+                                <p className="text-xs text-slate-500">
+                                  Captions authored by this user, with associated image and vote totals.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs text-slate-500">
+                                  {details.userCaptions.length
+                                    ? `Showing ${currentCaptionsPage * CAPTIONS_PER_PAGE + 1}-${Math.min(
+                                        (currentCaptionsPage + 1) * CAPTIONS_PER_PAGE,
+                                        details.userCaptions.length,
+                                      )} of ${details.userCaptions.length}`
+                                    : "No created captions"}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => setCaptionsPage((page) => Math.max(0, page - 1))}
+                                  disabled={currentCaptionsPage === 0}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-label="Previous captions"
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setCaptionsPage((page) => Math.min(captionsPageCount - 1, page + 1))}
+                                  disabled={currentCaptionsPage >= captionsPageCount - 1}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-label="Next captions"
+                                >
+                                  <ChevronRight className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
                             {!details.userCaptions.length ? (
                               <p className="text-sm text-slate-500">No created captions found for this user.</p>
                             ) : (
                               <div className="space-y-4">
-                                {details.userCaptions.map((caption) => {
+                                {visibleCaptions.map((caption) => {
                                   const captionId = getCaptionId(caption);
                                   const imageId = getCaptionImageId(caption);
                                   const image = details.imageById.get(imageId) ?? {};
@@ -964,10 +1070,42 @@ export function UserActivityManager({
 
                         {detailTab === "vote-history" ? (
                           <>
-                            <h4 className="text-sm font-semibold text-slate-900">Vote History</h4>
-                            <p className="mb-3 text-xs text-slate-500">
-                              Every current vote row by this user with vote value, target caption, associated image, and delete action.
-                            </p>
+                            <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <h4 className="text-sm font-semibold text-slate-900">Vote History</h4>
+                                <p className="text-xs text-slate-500">
+                                  Every current vote row by this user with vote value, target caption, associated image, and delete action.
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs text-slate-500">
+                                  {details.userVotes.length
+                                    ? `Showing ${currentVotesPage * VOTES_PER_PAGE + 1}-${Math.min(
+                                        (currentVotesPage + 1) * VOTES_PER_PAGE,
+                                        details.userVotes.length,
+                                      )} of ${details.userVotes.length}`
+                                    : "No votes"}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => setVotesPage((page) => Math.max(0, page - 1))}
+                                  disabled={currentVotesPage === 0}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-label="Previous votes"
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setVotesPage((page) => Math.min(votesPageCount - 1, page + 1))}
+                                  disabled={currentVotesPage >= votesPageCount - 1}
+                                  className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                  aria-label="Next votes"
+                                >
+                                  <ChevronRight className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
                             {!details.userVotes.length ? (
                               <p className="text-sm text-slate-500">No votes found for this user.</p>
                             ) : (
@@ -983,7 +1121,7 @@ export function UserActivityManager({
                                     </tr>
                                   </thead>
                                   <tbody>
-                                    {details.userVotes.map((vote) => {
+                                    {visibleVotes.map((vote) => {
                                       const caption = details.captionById.get(getVoteCaptionId(vote));
                                       const voteValue = getVoteValue(vote);
                                       return (
