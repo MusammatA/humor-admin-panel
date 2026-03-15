@@ -15,6 +15,16 @@ import { fetchFlavors, fetchHumorMix, fetchHumorSteps, updateHumorMix } from "..
 import { addProvider, deleteProvider as deleteProviderRecord, fetchProviders, updateProvider } from "../../lib/services/llm";
 import type { AllowedDomain, DatabaseRow, HumorFlavor, HumorMix, HumorStep, LLMProvider, Profile } from "../../types";
 
+export type ConfigFocusSection =
+  | "all"
+  | "profiles"
+  | "humor-flavors"
+  | "flavor-steps"
+  | "humor-mix"
+  | "llm-providers"
+  | "llm-models"
+  | "allowed-domains";
+
 type TableErrors = Partial<
   Record<"profiles" | "humor_flavors" | "humor_steps" | "humor_mix" | "llm_providers" | "allowed_domains", string>
 >;
@@ -125,7 +135,47 @@ function getSettledError<T>(result: PromiseSettledResult<T>) {
   return result.status === "rejected" ? getErrorMessage(result.reason) : "";
 }
 
-export function ConfigTab() {
+const CONFIG_SECTION_COPY: Record<ConfigFocusSection, { title: string; description: string }> = {
+  all: {
+    title: "Config",
+    description:
+      "Read from profiles and manage the humor flavors, humor mix, llm providers, llm models, and allowed domains tables.",
+  },
+  profiles: {
+    title: "Profiles Snapshot",
+    description: "Review a read-only sample of profile records used by the admin dashboard.",
+  },
+  "humor-flavors": {
+    title: "Humor Flavors",
+    description: "Browse available humor flavors and inspect the currently selected flavor steps.",
+  },
+  "flavor-steps": {
+    title: "Flavor Steps",
+    description: "Inspect the step sequence attached to each humor flavor.",
+  },
+  "humor-mix": {
+    title: "Humor Mix",
+    description: "Update the live humor mix rows that control caption composition.",
+  },
+  "llm-providers": {
+    title: "LLM Providers",
+    description: "Add, rename, and remove the LLM providers available to the admin tools.",
+  },
+  "llm-models": {
+    title: "LLM Models",
+    description: "Manage the live llm_models table separately from providers.",
+  },
+  "allowed-domains": {
+    title: "Allowed Domains",
+    description: "Manage the signup domain allowlist used by admin access checks.",
+  },
+};
+
+type ConfigTabProps = {
+  focusSection?: ConfigFocusSection;
+};
+
+export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [humorFlavors, setHumorFlavors] = useState<HumorFlavor[]>([]);
   const [humorSteps, setHumorSteps] = useState<HumorStep[]>([]);
@@ -371,19 +421,20 @@ export function ConfigTab() {
   }
 
   const hasTableErrors = Object.keys(tableErrors).length > 0;
+  const copy = CONFIG_SECTION_COPY[focusSection];
+  const showProfiles = focusSection === "all" || focusSection === "profiles";
+  const showFlavorSection = focusSection === "all" || focusSection === "humor-flavors" || focusSection === "flavor-steps";
+  const showHumorMix = focusSection === "all" || focusSection === "humor-mix";
+  const showProviders = focusSection === "all" || focusSection === "llm-providers";
+  const showModels = focusSection === "all" || focusSection === "llm-models";
+  const showDomains = focusSection === "all" || focusSection === "allowed-domains";
 
   return (
     <section className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-semibold text-slate-900">Config</h1>
-          <p className="mt-2 max-w-3xl text-sm text-slate-600">
-            Read from <code className="rounded bg-slate-100 px-1.5 py-0.5">profiles</code> and
-            manage the <code className="rounded bg-slate-100 px-1.5 py-0.5">humor_flavors</code>,
-            <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5">humor_mix</code>,
-            <code className="rounded bg-slate-100 px-1.5 py-0.5">llm_providers</code>, and
-            <code className="mx-1 rounded bg-slate-100 px-1.5 py-0.5">allowed_domains</code> tables.
-          </p>
+          <h1 className="text-3xl font-semibold text-slate-900">{copy.title}</h1>
+          <p className="mt-2 max-w-3xl text-sm text-slate-600">{copy.description}</p>
         </div>
         <button
           type="button"
@@ -411,111 +462,121 @@ export function ConfigTab() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-slate-700" />
-            <h2 className="text-lg font-semibold text-slate-900">Profiles Snapshot</h2>
-          </div>
-          <p className="mt-2 text-sm text-slate-600">
-            Read-only sample from the <code className="rounded bg-slate-100 px-1.5 py-0.5">profiles</code> table.
-            Full browsing remains in the Search Users tab.
-          </p>
-          {loading ? (
-            <p className="mt-4 text-sm text-slate-500">Loading profiles...</p>
-          ) : profiles.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">No profiles returned.</p>
-          ) : (
-            <div className="mt-4 space-y-2">
-              <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{profiles.length} rows loaded</p>
-              <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
-                {profiles.map((row) => {
-                  const id = getProfileId(row);
-                  const name = getProfileName(row);
-                  const email = getProfileEmail(row);
-                  return (
-                    <div key={id || email || JSON.stringify(row)} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                      <p className="text-sm font-medium text-slate-900">{name || email || "Unnamed profile"}</p>
-                      <p className="text-xs text-slate-600">{email || "No email"}</p>
-                      {id ? <p className="font-mono text-[11px] text-slate-500">{id}</p> : null}
-                    </div>
-                  );
-                })}
+      {showProfiles || showFlavorSection ? (
+        <div className="grid gap-6 xl:grid-cols-2">
+          {showProfiles ? (
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-slate-700" />
+                <h2 className="text-lg font-semibold text-slate-900">Profiles Snapshot</h2>
               </div>
-            </div>
-          )}
-        </article>
-
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-slate-700" />
-            <h2 className="text-lg font-semibold text-slate-900">Humor Flavors</h2>
-          </div>
-          <p className="mt-2 text-sm text-slate-600">
-            Read flavors to populate a selector, then inspect the related steps for the chosen flavor.
-          </p>
-          {loading ? (
-            <p className="mt-4 text-sm text-slate-500">Loading humor flavors...</p>
-          ) : humorFlavors.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">No humor flavors returned.</p>
-          ) : (
-            <>
-              <div className="mt-4 flex max-h-40 flex-wrap gap-2 overflow-y-auto pr-1">
-                {humorFlavors.map((row) => {
-                  const flavorRef = getFlavorRef(row);
-                  const selected = flavorRef && flavorRef === selectedFlavorRef;
-                  return (
-                    <button
-                      key={flavorRef || getFlavorLabel(row) || JSON.stringify(row)}
-                      type="button"
-                      onClick={() => setSelectedFlavorRef(flavorRef)}
-                      className={`rounded-full border px-3 py-1.5 text-sm ${
-                        selected
-                          ? "border-slate-900 bg-slate-900 text-white"
-                          : "border-slate-200 bg-slate-50 text-slate-700"
-                      }`}
-                    >
-                      {getFlavorLabel(row) || "Unnamed flavor"}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold text-slate-900">Flavor Steps</h3>
-                  {selectedFlavorRef ? <p className="font-mono text-[11px] text-slate-500">{selectedFlavorRef}</p> : null}
-                </div>
-                {stepsLoading ? (
-                  <p className="mt-3 text-sm text-slate-500">Loading steps...</p>
-                ) : humorSteps.length === 0 ? (
-                  <p className="mt-3 text-sm text-slate-500">No steps returned for the selected flavor.</p>
-                ) : (
-                  <div className="mt-3 space-y-2">
-                    {humorSteps.map((step, index) => (
-                      <div
-                        key={String(step.id ?? `${selectedFlavorRef}-${index}`)}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-2"
-                      >
-                        <p className="text-sm font-medium text-slate-900">
-                          {getStepOrder(step) ? `Step ${getStepOrder(step)}: ` : ""}
-                          {getStepTitle(step) || `Step ${index + 1}`}
-                        </p>
-                        {getStepBody(step) ? (
-                          <p className="mt-1 text-xs leading-relaxed text-slate-600">{getStepBody(step)}</p>
-                        ) : null}
-                      </div>
-                    ))}
+              <p className="mt-2 text-sm text-slate-600">
+                Read-only sample from the <code className="rounded bg-slate-100 px-1.5 py-0.5">profiles</code> table.
+                Full browsing remains in the Search Users tab.
+              </p>
+              {loading ? (
+                <p className="mt-4 text-sm text-slate-500">Loading profiles...</p>
+              ) : profiles.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">No profiles returned.</p>
+              ) : (
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs uppercase tracking-[0.16em] text-slate-500">{profiles.length} rows loaded</p>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {profiles.map((row) => {
+                      const id = getProfileId(row);
+                      const name = getProfileName(row);
+                      const email = getProfileEmail(row);
+                      return (
+                        <div key={id || email || JSON.stringify(row)} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                          <p className="text-sm font-medium text-slate-900">{name || email || "Unnamed profile"}</p>
+                          <p className="text-xs text-slate-600">{email || "No email"}</p>
+                          {id ? <p className="font-mono text-[11px] text-slate-500">{id}</p> : null}
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-            </>
-          )}
-        </article>
-      </div>
+                </div>
+              )}
+            </article>
+          ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-2">
-        <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          {showFlavorSection ? (
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-slate-700" />
+                <h2 className="text-lg font-semibold text-slate-900">
+                  {focusSection === "flavor-steps" ? "Flavor Steps" : "Humor Flavors"}
+                </h2>
+              </div>
+              <p className="mt-2 text-sm text-slate-600">
+                Read flavors to populate a selector, then inspect the related steps for the chosen flavor.
+              </p>
+              {loading ? (
+                <p className="mt-4 text-sm text-slate-500">Loading humor flavors...</p>
+              ) : humorFlavors.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">No humor flavors returned.</p>
+              ) : (
+                <>
+                  <div className="mt-4 flex max-h-40 flex-wrap gap-2 overflow-y-auto pr-1">
+                    {humorFlavors.map((row) => {
+                      const flavorRef = getFlavorRef(row);
+                      const selected = flavorRef && flavorRef === selectedFlavorRef;
+                      return (
+                        <button
+                          key={flavorRef || getFlavorLabel(row) || JSON.stringify(row)}
+                          type="button"
+                          onClick={() => setSelectedFlavorRef(flavorRef)}
+                          className={`rounded-full border px-3 py-1.5 text-sm ${
+                            selected
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-200 bg-slate-50 text-slate-700"
+                          }`}
+                        >
+                          {getFlavorLabel(row) || "Unnamed flavor"}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <h3 className="text-sm font-semibold text-slate-900">Flavor Steps</h3>
+                      {selectedFlavorRef ? <p className="font-mono text-[11px] text-slate-500">{selectedFlavorRef}</p> : null}
+                    </div>
+                    {stepsLoading ? (
+                      <p className="mt-3 text-sm text-slate-500">Loading steps...</p>
+                    ) : humorSteps.length === 0 ? (
+                      <p className="mt-3 text-sm text-slate-500">No steps returned for the selected flavor.</p>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {humorSteps.map((step, index) => (
+                          <div
+                            key={String(step.id ?? `${selectedFlavorRef}-${index}`)}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2"
+                          >
+                            <p className="text-sm font-medium text-slate-900">
+                              {getStepOrder(step) ? `Step ${getStepOrder(step)}: ` : ""}
+                              {getStepTitle(step) || `Step ${index + 1}`}
+                            </p>
+                            {getStepBody(step) ? (
+                              <p className="mt-1 text-xs leading-relaxed text-slate-600">{getStepBody(step)}</p>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </article>
+          ) : null}
+        </div>
+      ) : null}
+
+      {showHumorMix || showProviders || showModels ? (
+        <div className="grid gap-6 xl:grid-cols-2">
+          {showHumorMix ? (
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center gap-2">
             <Save className="h-5 w-5 text-slate-700" />
             <h2 className="text-lg font-semibold text-slate-900">Humor Mix</h2>
@@ -560,81 +621,86 @@ export function ConfigTab() {
               })}
             </div>
           )}
-        </article>
+            </article>
+          ) : null}
 
+          {showProviders ? (
+            <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Cpu className="h-5 w-5 text-slate-700" />
+                <h2 className="text-lg font-semibold text-slate-900">LLM Providers</h2>
+              </div>
+              <p className="mt-2 text-sm text-slate-600">
+                Create and update providers with <code className="rounded bg-slate-100 px-1.5 py-0.5">upsert</code>,
+                then remove obsolete rows when needed.
+              </p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  value={newProviderName}
+                  onChange={(event) => setNewProviderName(event.target.value)}
+                  placeholder="New provider name"
+                  className="min-w-[14rem] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => saveProvider()}
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Provider
+                </button>
+              </div>
+              {loading ? (
+                <p className="mt-4 text-sm text-slate-500">Loading providers...</p>
+              ) : providers.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">No providers returned.</p>
+              ) : (
+                <div className="mt-4 max-h-[26rem] space-y-3 overflow-y-auto pr-1">
+                  {providers.map((row) => {
+                    const id = getProviderId(row);
+                    const fallbackName = getProviderName(row);
+                    const key = id || fallbackName;
+                    return (
+                      <div key={key || JSON.stringify(row)} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex flex-wrap gap-2">
+                          <input
+                            type="text"
+                            value={providerDrafts[key] ?? ""}
+                            onChange={(event) => setProviderDrafts((prev) => ({ ...prev, [key]: event.target.value }))}
+                            className="min-w-[12rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => saveProvider(row)}
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteProvider(row)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-500">{rowPreview(row, ["id", "name", "provider", "slug"]) || "No extra columns"}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </article>
+          ) : null}
+
+          {showModels ? <LLMModelsManager canManage /> : null}
+        </div>
+      ) : null}
+
+      {showDomains ? (
         <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-center gap-2">
-            <Cpu className="h-5 w-5 text-slate-700" />
-            <h2 className="text-lg font-semibold text-slate-900">LLM Providers</h2>
-          </div>
-          <p className="mt-2 text-sm text-slate-600">
-            Create and update providers with <code className="rounded bg-slate-100 px-1.5 py-0.5">upsert</code>,
-            then remove obsolete rows when needed.
-          </p>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <input
-              type="text"
-              value={newProviderName}
-              onChange={(event) => setNewProviderName(event.target.value)}
-              placeholder="New provider name"
-              className="min-w-[14rem] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-            />
-            <button
-              type="button"
-              onClick={() => saveProvider()}
-              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-            >
-              <Plus className="h-4 w-4" />
-              Add Provider
-            </button>
-          </div>
-          {loading ? (
-            <p className="mt-4 text-sm text-slate-500">Loading providers...</p>
-          ) : providers.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">No providers returned.</p>
-          ) : (
-            <div className="mt-4 max-h-[26rem] space-y-3 overflow-y-auto pr-1">
-              {providers.map((row) => {
-                const id = getProviderId(row);
-                const fallbackName = getProviderName(row);
-                const key = id || fallbackName;
-                return (
-                  <div key={key || JSON.stringify(row)} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex flex-wrap gap-2">
-                      <input
-                        type="text"
-                        value={providerDrafts[key] ?? ""}
-                        onChange={(event) => setProviderDrafts((prev) => ({ ...prev, [key]: event.target.value }))}
-                        className="min-w-[12rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => saveProvider(row)}
-                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                      >
-                        Save
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteProvider(row)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                        Delete
-                      </button>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-500">{rowPreview(row, ["id", "name", "provider", "slug"]) || "No extra columns"}</p>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </article>
-
-        <LLMModelsManager canManage />
-      </div>
-
-      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center gap-2">
           <Globe2 className="h-5 w-5 text-slate-700" />
           <h2 className="text-lg font-semibold text-slate-900">Allowed Domains</h2>
@@ -700,7 +766,8 @@ export function ConfigTab() {
             })}
           </div>
         )}
-      </article>
+        </article>
+      ) : null}
     </section>
   );
 }
