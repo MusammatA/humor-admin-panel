@@ -214,22 +214,18 @@ export function UserActivityManager({
   }
 
   async function loadProfiles() {
-    if (!supabase) {
-      setError("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY.");
-      setLoading(false);
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
-      const nextProfiles = await fetchAllRows(
-        "profiles",
-        (query) => query.order("created_datetime_utc", { ascending: false }),
-        1000,
-      );
-      setProfiles(nextProfiles);
+      const response = await fetch("/api/admin-users", { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof payload?.error === "string" && payload.error.trim() ? payload.error : "Failed to load profiles.",
+        );
+      }
+      setProfiles(Array.isArray(payload?.profiles) ? payload.profiles : []);
     } catch (error) {
       setProfiles([]);
       setError(error instanceof Error ? error.message : "Failed to load profiles.");
@@ -239,7 +235,7 @@ export function UserActivityManager({
   }
 
   async function loadSelectedUserActivity(user: DirectoryUser | null) {
-    if (!supabase || !user?.id) {
+    if (!user?.id) {
       setActivity(null);
       return;
     }
@@ -248,89 +244,29 @@ export function UserActivityManager({
     setError(null);
 
     try {
-      const [createdImages, userCaptions, userVotes] = await Promise.all([
-        fetchAllRows(
-          "images",
-          (query) => query.eq("profile_id", user.id).order("created_datetime_utc", { ascending: false }),
-          500,
-        ),
-        fetchAllRows(
-          "captions",
-          (query) => query.eq("profile_id", user.id).order("created_datetime_utc", { ascending: false }),
-          1000,
-        ),
-        fetchAllRows(
-          "caption_votes",
-          (query) =>
-            query
-              .or(`profile_id.eq.${user.id},user_id.eq.${user.id}`)
-              .order("created_datetime_utc", { ascending: false }),
-          1000,
-        ),
-      ]);
+      const response = await fetch(`/api/admin-users?userId=${encodeURIComponent(user.id)}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          typeof payload?.error === "string" && payload.error.trim()
+            ? payload.error
+            : "Failed to load user activity.",
+        );
+      }
 
-      const createdImageIds = uniqueStrings(createdImages.map((row) => getImageId(row)));
-      const voteCaptionIds = uniqueStrings(userVotes.map((row) => getVoteCaptionId(row)));
-
-      const [captionsForCreatedImages, captionsFromVotes] = await Promise.all([
-        fetchRowsByValues(
-          "captions",
-          "image_id",
-          createdImageIds,
-          (query) => query.order("created_datetime_utc", { ascending: false }),
-        ),
-        fetchRowsByValues(
-          "captions",
-          "id",
-          voteCaptionIds,
-          (query) => query.order("created_datetime_utc", { ascending: false }),
-        ),
-      ]);
-
-      const allCaptions = dedupeRows(
-        [...userCaptions, ...captionsForCreatedImages, ...captionsFromVotes],
-        (row) => getCaptionId(row),
+      const nextActivity = payload?.activity;
+      setActivity(
+        nextActivity && typeof nextActivity === "object"
+          ? {
+              createdImages: Array.isArray(nextActivity.createdImages) ? nextActivity.createdImages : [],
+              allImages: Array.isArray(nextActivity.allImages) ? nextActivity.allImages : [],
+              userCaptions: Array.isArray(nextActivity.userCaptions) ? nextActivity.userCaptions : [],
+              allCaptions: Array.isArray(nextActivity.allCaptions) ? nextActivity.allCaptions : [],
+              userVotes: Array.isArray(nextActivity.userVotes) ? nextActivity.userVotes : [],
+              captionVotes: Array.isArray(nextActivity.captionVotes) ? nextActivity.captionVotes : [],
+            }
+          : null,
       );
-
-      const relatedImageIds = uniqueStrings(
-        allCaptions
-          .map((row) => getCaptionImageId(row))
-          .filter((id) => id && !createdImageIds.includes(id)),
-      );
-
-      const [relatedImages, captionVotes] = await Promise.all([
-        fetchRowsByValues(
-          "images",
-          "id",
-          relatedImageIds,
-          (query) => query.order("created_datetime_utc", { ascending: false }),
-        ),
-        fetchRowsByValues(
-          "caption_votes",
-          "caption_id",
-          allCaptions.map((row) => getCaptionId(row)),
-          (query) => query.order("created_datetime_utc", { ascending: false }),
-        ),
-      ]);
-
-      setActivity({
-        createdImages: dedupeRows(createdImages, (row) => getImageId(row)),
-        allImages: dedupeRows([...createdImages, ...relatedImages], (row) => getImageId(row)),
-        userCaptions: dedupeRows(userCaptions, (row) => getCaptionId(row)),
-        allCaptions,
-        userVotes: dedupeRows(
-          userVotes,
-          (row) =>
-            rowString(row, ["id"]) ||
-            `${rowString(row, ["profile_id", "user_id"])}:${getVoteCaptionId(row)}:${getTimestamp(row)}`,
-        ),
-        captionVotes: dedupeRows(
-          captionVotes,
-          (row) =>
-            rowString(row, ["id"]) ||
-            `${rowString(row, ["profile_id", "user_id"])}:${getVoteCaptionId(row)}:${getTimestamp(row)}`,
-        ),
-      });
     } catch (error) {
       setActivity(null);
       setError(error instanceof Error ? error.message : "Failed to load user activity.");

@@ -218,6 +218,8 @@ type ConfigTabProps = {
   focusSection?: ConfigFocusSection;
 };
 
+const DOMAINS_PAGE_SIZE = 20;
+
 export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [humorFlavors, setHumorFlavors] = useState<HumorFlavor[]>([]);
@@ -235,6 +237,7 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   const [newProviderName, setNewProviderName] = useState("");
   const [newDomain, setNewDomain] = useState("");
   const [selectedFlavorRef, setSelectedFlavorRef] = useState("");
+  const [domainPage, setDomainPage] = useState(0);
   const [stepsLoading, setStepsLoading] = useState(false);
 
   async function loadConfigData() {
@@ -253,7 +256,11 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
       setHumorFlavors(flavorsRes.status === "fulfilled" ? flavorsRes.value : []);
       setHumorMix(mixRes.status === "fulfilled" ? mixRes.value : []);
       setProviders(providersRes.status === "fulfilled" ? providersRes.value : []);
-      setDomains(domainsRes.status === "fulfilled" ? domainsRes.value : []);
+      setDomains(
+        domainsRes.status === "fulfilled"
+          ? [...domainsRes.value].sort((a, b) => getDomainValue(a).localeCompare(getDomainValue(b)))
+          : [],
+      );
 
       const nextErrors: TableErrors = {};
       const profilesError = getSettledError(profilesRes);
@@ -325,6 +332,11 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
       setSelectedFlavorRef(getFlavorRef(humorFlavors[0]) || "");
     }
   }, [humorFlavors, selectedFlavorRef]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(domains.length / DOMAINS_PAGE_SIZE) - 1);
+    setDomainPage((page) => Math.min(page, maxPage));
+  }, [domains.length]);
 
   useEffect(() => {
     async function loadSteps() {
@@ -473,6 +485,10 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   const showDomains = focusSection === "all" || focusSection === "allowed-domains";
   const upperSectionCount = [showProfiles, showFlavorSection].filter(Boolean).length;
   const middleSectionCount = [showHumorMix, showProviders, showModels].filter(Boolean).length;
+  const domainPageCount = Math.max(1, Math.ceil(domains.length / DOMAINS_PAGE_SIZE));
+  const domainStart = domainPage * DOMAINS_PAGE_SIZE;
+  const pagedDomains = domains.slice(domainStart, domainStart + DOMAINS_PAGE_SIZE);
+  const domainEnd = Math.min(domainStart + pagedDomains.length, domains.length);
 
   return (
     <section className="space-y-6">
@@ -749,71 +765,96 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
 
       {showDomains ? (
         <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center gap-2">
-          <Globe2 className="h-5 w-5 text-slate-700" />
-          <h2 className="text-lg font-semibold text-slate-900">Allowed Domains</h2>
-        </div>
-        <p className="mt-2 text-sm text-slate-600">
-          Insert, update, and delete rows from <code className="rounded bg-slate-100 px-1.5 py-0.5">allowed_domains</code>.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <input
-            type="text"
-            value={newDomain}
-            onChange={(event) => setNewDomain(event.target.value)}
-            placeholder="columbia.edu"
-            className="min-w-[14rem] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
-          />
-          <button
-            type="button"
-            onClick={() => saveDomain()}
-            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
-          >
-            <Plus className="h-4 w-4" />
-            Add Domain
-          </button>
-        </div>
-        {loading ? (
-          <p className="mt-4 text-sm text-slate-500">Loading domains...</p>
-        ) : domains.length === 0 ? (
-          <p className="mt-4 text-sm text-slate-500">No allowed domains returned.</p>
-        ) : (
-          <div className="mt-4 max-h-[26rem] space-y-3 overflow-y-auto pr-1">
-            {domains.map((row) => {
-              const id = getDomainId(row);
-              const domain = getDomainValue(row);
-              const key = id || domain;
-              return (
-                <div key={key || JSON.stringify(row)} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-wrap gap-2">
-                    <input
-                      type="text"
-                      value={domainDrafts[key] ?? ""}
-                      onChange={(event) => setDomainDrafts((prev) => ({ ...prev, [key]: event.target.value }))}
-                      className="min-w-[12rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => saveDomain(row)}
-                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                    >
-                      Save
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteDomain(row)}
-                      className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Delete
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs text-slate-500">{rowPreview(row, ["id", "domain", "host"]) || "No extra columns"}</p>
-                </div>
-              );
-            })}
+          <div className="flex items-center gap-2">
+            <Globe2 className="h-5 w-5 text-slate-700" />
+            <h2 className="text-lg font-semibold text-slate-900">Allowed Domains</h2>
           </div>
-        )}
+          <p className="mt-2 text-sm text-slate-600">
+            Insert, update, and delete rows from <code className="rounded bg-slate-100 px-1.5 py-0.5">allowed_domains</code>.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <input
+              type="text"
+              value={newDomain}
+              onChange={(event) => setNewDomain(event.target.value)}
+              placeholder="columbia.edu"
+              className="min-w-[14rem] flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900"
+            />
+            <button
+              type="button"
+              onClick={() => saveDomain()}
+              className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+            >
+              <Plus className="h-4 w-4" />
+              Add Domain
+            </button>
+          </div>
+          {loading ? (
+            <p className="mt-4 text-sm text-slate-500">Loading domains...</p>
+          ) : domains.length === 0 ? (
+            <p className="mt-4 text-sm text-slate-500">No allowed domains returned.</p>
+          ) : (
+            <div className="mt-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-slate-500">
+                  Showing {domains.length === 0 ? 0 : domainStart + 1}-{domainEnd} of {domains.length}
+                </p>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDomainPage((page) => Math.max(0, page - 1))}
+                    disabled={domainPage === 0}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDomainPage((page) => Math.min(domainPageCount - 1, page + 1))}
+                    disabled={domainPage >= domainPageCount - 1}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+              {pagedDomains.map((row) => {
+                const id = getDomainId(row);
+                const domain = getDomainValue(row);
+                const key = id || domain;
+                return (
+                  <div key={key || JSON.stringify(row)} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div className="flex flex-wrap gap-2">
+                      <input
+                        type="text"
+                        value={domainDrafts[key] ?? ""}
+                        onChange={(event) => setDomainDrafts((prev) => ({ ...prev, [key]: event.target.value }))}
+                        className="min-w-[12rem] flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => saveDomain(row)}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100"
+                      >
+                        Save
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteDomain(row)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete
+                      </button>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {rowPreview(row, ["id", "domain", "host"]) || "No extra columns"}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </article>
       ) : null}
     </section>

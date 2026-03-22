@@ -14,6 +14,8 @@ type EntryDraft = {
   isSuperadmin: boolean;
 };
 
+const ENTRIES_PAGE_SIZE = 20;
+
 function normalizeEmail(value: unknown) {
   return String(value || "").trim().toLowerCase();
 }
@@ -35,6 +37,7 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
   const [drafts, setDrafts] = useState<Record<string, EntryDraft>>({});
   const [newEmail, setNewEmail] = useState("");
   const [newIsSuperadmin, setNewIsSuperadmin] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +54,11 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
         throw new Error(queryError.message);
       }
 
-      setEntries((data ?? []) as WhitelistedEmail[]);
+      setEntries(
+        [...((data ?? []) as WhitelistedEmail[])].sort((a, b) =>
+          getEntryEmail(a).localeCompare(getEntryEmail(b)),
+        ),
+      );
     } catch (error) {
       setEntries([]);
       setError(getErrorMessage(error));
@@ -84,6 +91,16 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
       ),
     );
   }, [entries]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(entries.length / ENTRIES_PAGE_SIZE) - 1);
+    setCurrentPage((page) => Math.min(page, maxPage));
+  }, [entries.length]);
+
+  const pageCount = Math.max(1, Math.ceil(entries.length / ENTRIES_PAGE_SIZE));
+  const pageStart = currentPage * ENTRIES_PAGE_SIZE;
+  const pagedEntries = entries.slice(pageStart, pageStart + ENTRIES_PAGE_SIZE);
+  const pageEnd = Math.min(pageStart + pagedEntries.length, entries.length);
 
   async function addEntry() {
     if (!canManage) return;
@@ -272,7 +289,31 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
         <p className="mt-5 text-sm text-slate-500">No whitelisted emails returned.</p>
       ) : (
         <div className="mt-5 space-y-3">
-          {entries.map((row) => {
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-500">
+              Showing {entries.length === 0 ? 0 : pageStart + 1}-{pageEnd} of {entries.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.max(0, page - 1))}
+                disabled={currentPage === 0}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                onClick={() => setCurrentPage((page) => Math.min(pageCount - 1, page + 1))}
+                disabled={currentPage >= pageCount - 1}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+
+          {pagedEntries.map((row) => {
             const id = getEntryId(row);
             const draft = drafts[id] ?? { email: getEntryEmail(row), isSuperadmin: getEntrySuperadmin(row) };
 
