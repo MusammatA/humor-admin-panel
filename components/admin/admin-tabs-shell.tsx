@@ -19,6 +19,7 @@ import {
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AccountTab } from "./account-tab";
+import { AdminFeedbackProvider } from "./admin-feedback";
 import { CaptionLibraryManager } from "./caption-library-manager";
 import { ConfigTab } from "./config-tab";
 import { CreateTab } from "./create-tab";
@@ -391,7 +392,7 @@ export function AdminTabsShell({ stats, adminEmail = "" }: AdminTabsShellProps) 
 
       <div className="min-h-screen lg:pl-72">
         <div className="w-full px-4 pb-10 pt-20 sm:px-8 lg:px-10 lg:pt-10 2xl:px-14">
-          {renderActivePanel()}
+          <AdminFeedbackProvider>{renderActivePanel()}</AdminFeedbackProvider>
         </div>
       </div>
     </main>

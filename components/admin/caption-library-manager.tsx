@@ -2,6 +2,7 @@
 
 import { History, Lightbulb, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AdminEmptyState, AdminLoadingState, AdminSearchInput, useAdminToast } from "./admin-feedback";
 import {
   addCaptionExample,
   deleteCaptionExample,
@@ -59,11 +60,14 @@ function parseOptionalNumber(value: string) {
 }
 
 export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps) {
+  const { notify } = useAdminToast();
   const [activeView, setActiveView] = useState<CaptionLibraryView>("requests");
   const [requests, setRequests] = useState<CaptionRequest[]>([]);
   const [requestPage, setRequestPage] = useState(0);
+  const [requestSearch, setRequestSearch] = useState("");
   const [examples, setExamples] = useState<CaptionExample[]>([]);
   const [examplePage, setExamplePage] = useState(0);
+  const [exampleSearch, setExampleSearch] = useState("");
   const [selectedExampleId, setSelectedExampleId] = useState("");
   const [drafts, setDrafts] = useState<Record<string, CaptionExampleDraft>>({});
   const [newExample, setNewExample] = useState<CaptionExampleDraft>({
@@ -113,27 +117,57 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
   }, [examples]);
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(requests.length / REQUESTS_PAGE_SIZE) - 1);
-    setRequestPage((page) => Math.min(page, maxPage));
-  }, [requests.length]);
+    setRequestPage(0);
+  }, [requestSearch]);
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(examples.length / EXAMPLES_PAGE_SIZE) - 1);
+    setExamplePage(0);
+  }, [exampleSearch]);
+
+  const filteredRequests = useMemo(() => {
+    const query = requestSearch.trim().toLowerCase();
+    if (!query) return requests;
+
+    return requests.filter((row) =>
+      [row.id, row.image_id, row.profile_id, row.created_datetime_utc]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [requestSearch, requests]);
+
+  const filteredExamples = useMemo(() => {
+    const query = exampleSearch.trim().toLowerCase();
+    if (!query) return examples;
+
+    return examples.filter((row) =>
+      [row.id, row.caption, row.explanation, row.image_description, row.image_id, row.priority]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [exampleSearch, examples]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredRequests.length / REQUESTS_PAGE_SIZE) - 1);
+    setRequestPage((page) => Math.min(page, maxPage));
+  }, [filteredRequests.length]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredExamples.length / EXAMPLES_PAGE_SIZE) - 1);
     setExamplePage((page) => Math.min(page, maxPage));
-  }, [examples.length]);
+  }, [filteredExamples.length]);
 
-  const requestPageCount = Math.max(1, Math.ceil(requests.length / REQUESTS_PAGE_SIZE));
+  const requestPageCount = Math.max(1, Math.ceil(filteredRequests.length / REQUESTS_PAGE_SIZE));
   const requestStart = requestPage * REQUESTS_PAGE_SIZE;
-  const pagedRequests = requests.slice(requestStart, requestStart + REQUESTS_PAGE_SIZE);
-  const requestEnd = Math.min(requestStart + pagedRequests.length, requests.length);
+  const pagedRequests = filteredRequests.slice(requestStart, requestStart + REQUESTS_PAGE_SIZE);
+  const requestEnd = Math.min(requestStart + pagedRequests.length, filteredRequests.length);
 
-  const examplePageCount = Math.max(1, Math.ceil(examples.length / EXAMPLES_PAGE_SIZE));
+  const examplePageCount = Math.max(1, Math.ceil(filteredExamples.length / EXAMPLES_PAGE_SIZE));
   const exampleStart = examplePage * EXAMPLES_PAGE_SIZE;
-  const pagedExamples = examples.slice(exampleStart, exampleStart + EXAMPLES_PAGE_SIZE);
-  const exampleEnd = Math.min(exampleStart + pagedExamples.length, examples.length);
+  const pagedExamples = filteredExamples.slice(exampleStart, exampleStart + EXAMPLES_PAGE_SIZE);
+  const exampleEnd = Math.min(exampleStart + pagedExamples.length, filteredExamples.length);
   const selectedExample =
     pagedExamples.find((row) => getExampleId(row) === selectedExampleId) ??
-    examples.find((row) => getExampleId(row) === selectedExampleId) ??
+    filteredExamples.find((row) => getExampleId(row) === selectedExampleId) ??
     pagedExamples[0] ??
     null;
 
@@ -196,9 +230,12 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
         imageId: "",
       });
       setMessage("Added caption example.");
+      notify({ type: "success", title: "Caption example added" });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not add example", message });
     } finally {
       setBusy(false);
     }
@@ -238,9 +275,12 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
         },
       );
       setMessage(`Saved caption example ${id}.`);
+      notify({ type: "success", title: "Caption example saved", message: id });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not save example", message });
     } finally {
       setBusy(false);
     }
@@ -265,9 +305,12 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
     try {
       await deleteCaptionExample({ id });
       setMessage(`Deleted caption example ${id}.`);
+      notify({ type: "success", title: "Caption example deleted", message: id });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not delete example", message });
     } finally {
       setBusy(false);
     }
@@ -332,16 +375,21 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
       {activeView === "requests" ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           {loading ? (
-            <p className="text-sm text-slate-500">Loading caption requests...</p>
+            <AdminLoadingState label="Loading caption requests..." />
           ) : requests.length === 0 ? (
-            <p className="text-sm text-slate-500">No caption requests returned.</p>
+            <AdminEmptyState title="No caption requests found" description="New request rows will appear here." />
           ) : (
             <div className="space-y-4">
+              <AdminSearchInput
+                value={requestSearch}
+                onChange={setRequestSearch}
+                placeholder="Search request id, image id, profile id, or date"
+              />
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-900">Request History</h3>
                   <p className="mt-1 text-xs text-slate-500">
-                    Showing {requests.length === 0 ? 0 : requestStart + 1}-{requestEnd} of {requests.length}
+                    Showing {filteredRequests.length === 0 ? 0 : requestStart + 1}-{requestEnd} of {filteredRequests.length}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -367,6 +415,9 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
                 </div>
               </div>
 
+              {filteredRequests.length === 0 ? (
+                <AdminEmptyState title="No matching requests" description="Try a different search." />
+              ) : (
               <div className="overflow-hidden rounded-xl border border-slate-200">
                 <table className="min-w-full text-left text-sm">
                   <thead className="bg-slate-50 text-slate-500">
@@ -389,6 +440,7 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           )}
         </section>
@@ -449,16 +501,21 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             {loading ? (
-              <p className="text-sm text-slate-500">Loading caption examples...</p>
+              <AdminLoadingState label="Loading caption examples..." />
             ) : examples.length === 0 ? (
-              <p className="text-sm text-slate-500">No caption examples returned.</p>
+              <AdminEmptyState title="No caption examples found" description="Add the first reusable example above." />
             ) : (
               <div className="space-y-4">
+                <AdminSearchInput
+                  value={exampleSearch}
+                  onChange={setExampleSearch}
+                  placeholder="Search captions, explanations, image descriptions, or ids"
+                />
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900">Example Library</h3>
                     <p className="mt-1 text-xs text-slate-500">
-                      Showing {examples.length === 0 ? 0 : exampleStart + 1}-{exampleEnd} of {examples.length}
+                      Showing {filteredExamples.length === 0 ? 0 : exampleStart + 1}-{exampleEnd} of {filteredExamples.length}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -484,6 +541,9 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
                   </div>
                 </div>
 
+                {filteredExamples.length === 0 ? (
+                  <AdminEmptyState title="No matching examples" description="Try a different search." />
+                ) : (
                 <div className="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="space-y-2">
@@ -612,6 +672,7 @@ export function CaptionLibraryManager({ canManage }: CaptionLibraryManagerProps)
                     </div>
                   )}
                 </div>
+                )}
               </div>
             )}
           </section>

@@ -2,6 +2,7 @@
 
 import { Bot, Cpu, Plus, Save, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AdminEmptyState, AdminLoadingState, AdminSearchInput, useAdminToast } from "./admin-feedback";
 import { getErrorMessage } from "../../lib/services/client";
 import {
   addModel,
@@ -73,9 +74,12 @@ function parseProviderId(value: string) {
 }
 
 export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
+  const { notify } = useAdminToast();
   const [activeView, setActiveView] = useState<RegistryView>("models");
   const [models, setModels] = useState<LLMModel[]>([]);
   const [providers, setProviders] = useState<LLMProvider[]>([]);
+  const [modelSearch, setModelSearch] = useState("");
+  const [providerSearch, setProviderSearch] = useState("");
   const [modelDrafts, setModelDrafts] = useState<Record<string, ModelDraft>>({});
   const [providerDrafts, setProviderDrafts] = useState<Record<string, ProviderDraft>>({});
   const [selectedModelId, setSelectedModelId] = useState("");
@@ -142,14 +146,12 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
   }, [providers]);
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(models.length / REGISTRY_PAGE_SIZE) - 1);
-    setModelPage((page) => Math.min(page, maxPage));
-  }, [models.length]);
+    setModelPage(0);
+  }, [modelSearch]);
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(providers.length / REGISTRY_PAGE_SIZE) - 1);
-    setProviderPage((page) => Math.min(page, maxPage));
-  }, [providers.length]);
+    setProviderPage(0);
+  }, [providerSearch]);
 
   const providerNameById = useMemo(
     () =>
@@ -164,23 +166,62 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
     [providers],
   );
 
-  const modelPageCount = Math.max(1, Math.ceil(models.length / REGISTRY_PAGE_SIZE));
+  const filteredModels = useMemo(() => {
+    const query = modelSearch.trim().toLowerCase();
+    if (!query) return models;
+
+    return models.filter((row) =>
+      [
+        row.id,
+        row.name,
+        row.provider_model_id,
+        row.llm_provider_id,
+        providerNameById[String(row.llm_provider_id ?? "")],
+        row.is_temperature_supported ? "temperature" : "no temperature",
+      ]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [modelSearch, models, providerNameById]);
+
+  const filteredProviders = useMemo(() => {
+    const query = providerSearch.trim().toLowerCase();
+    if (!query) return providers;
+
+    return providers.filter((row) =>
+      [row.id, row.name, row.provider, row.slug]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [providerSearch, providers]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredModels.length / REGISTRY_PAGE_SIZE) - 1);
+    setModelPage((page) => Math.min(page, maxPage));
+  }, [filteredModels.length]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredProviders.length / REGISTRY_PAGE_SIZE) - 1);
+    setProviderPage((page) => Math.min(page, maxPage));
+  }, [filteredProviders.length]);
+
+  const modelPageCount = Math.max(1, Math.ceil(filteredModels.length / REGISTRY_PAGE_SIZE));
   const modelStart = modelPage * REGISTRY_PAGE_SIZE;
-  const pagedModels = models.slice(modelStart, modelStart + REGISTRY_PAGE_SIZE);
-  const modelEnd = Math.min(modelStart + pagedModels.length, models.length);
+  const pagedModels = filteredModels.slice(modelStart, modelStart + REGISTRY_PAGE_SIZE);
+  const modelEnd = Math.min(modelStart + pagedModels.length, filteredModels.length);
   const selectedModel =
     pagedModels.find((row) => getModelId(row) === selectedModelId) ??
-    models.find((row) => getModelId(row) === selectedModelId) ??
+    filteredModels.find((row) => getModelId(row) === selectedModelId) ??
     pagedModels[0] ??
     null;
 
-  const providerPageCount = Math.max(1, Math.ceil(providers.length / REGISTRY_PAGE_SIZE));
+  const providerPageCount = Math.max(1, Math.ceil(filteredProviders.length / REGISTRY_PAGE_SIZE));
   const providerStart = providerPage * REGISTRY_PAGE_SIZE;
-  const pagedProviders = providers.slice(providerStart, providerStart + REGISTRY_PAGE_SIZE);
-  const providerEnd = Math.min(providerStart + pagedProviders.length, providers.length);
+  const pagedProviders = filteredProviders.slice(providerStart, providerStart + REGISTRY_PAGE_SIZE);
+  const providerEnd = Math.min(providerStart + pagedProviders.length, filteredProviders.length);
   const selectedProvider =
     pagedProviders.find((row) => getProviderId(row) === selectedProviderId) ??
-    providers.find((row) => getProviderId(row) === selectedProviderId) ??
+    filteredProviders.find((row) => getProviderId(row) === selectedProviderId) ??
     pagedProviders[0] ??
     null;
 
@@ -248,9 +289,12 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
       });
       setNewModel({ name: "", llmProviderId: "", providerModelId: "", isTemperatureSupported: false });
       setMessage(`Added model ${name}.`);
+      notify({ type: "success", title: "Model added", message: name });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not add model", message });
     } finally {
       setBusy(false);
     }
@@ -289,9 +333,12 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
         },
       );
       setMessage(`Saved model ${name}.`);
+      notify({ type: "success", title: "Model saved", message: name });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not save model", message });
     } finally {
       setBusy(false);
     }
@@ -317,9 +364,12 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
     try {
       await deleteModel({ id });
       setMessage(`Deleted model ${name}.`);
+      notify({ type: "success", title: "Model deleted", message: name });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not delete model", message });
     } finally {
       setBusy(false);
     }
@@ -342,9 +392,12 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
       await addProvider({ name });
       setNewProviderName("");
       setMessage(`Added provider ${name}.`);
+      notify({ type: "success", title: "Provider added", message: name });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not add provider", message });
     } finally {
       setBusy(false);
     }
@@ -368,9 +421,12 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
     try {
       await updateProvider({ id }, { name });
       setMessage(`Saved provider ${name}.`);
+      notify({ type: "success", title: "Provider saved", message: name });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not save provider", message });
     } finally {
       setBusy(false);
     }
@@ -396,9 +452,12 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
     try {
       await deleteProvider({ id });
       setMessage(`Deleted provider ${name}.`);
+      notify({ type: "success", title: "Provider deleted", message: name });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not delete provider", message });
     } finally {
       setBusy(false);
     }
@@ -513,16 +572,21 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             {loading ? (
-              <p className="text-sm text-slate-500">Loading llm models...</p>
+              <AdminLoadingState label="Loading LLM models..." />
             ) : models.length === 0 ? (
-              <p className="text-sm text-slate-500">No llm models returned.</p>
+              <AdminEmptyState title="No LLM models found" description="Add the first model above." />
             ) : (
               <div className="space-y-4">
+                <AdminSearchInput
+                  value={modelSearch}
+                  onChange={setModelSearch}
+                  placeholder="Search models, providers, ids, or temperature support"
+                />
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900">Model Registry</h3>
                     <p className="mt-1 text-xs text-slate-500">
-                      Showing {models.length === 0 ? 0 : modelStart + 1}-{modelEnd} of {models.length}
+                      Showing {filteredModels.length === 0 ? 0 : modelStart + 1}-{modelEnd} of {filteredModels.length}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -548,6 +612,9 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
                   </div>
                 </div>
 
+                {filteredModels.length === 0 ? (
+                  <AdminEmptyState title="No matching models" description="Try a different search." />
+                ) : (
                 <div className="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="space-y-2">
@@ -682,6 +749,7 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
                     </div>
                   )}
                 </div>
+                )}
               </div>
             )}
           </section>
@@ -713,16 +781,21 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             {loading ? (
-              <p className="text-sm text-slate-500">Loading llm providers...</p>
+              <AdminLoadingState label="Loading LLM providers..." />
             ) : providers.length === 0 ? (
-              <p className="text-sm text-slate-500">No llm providers returned.</p>
+              <AdminEmptyState title="No LLM providers found" description="Add the first provider above." />
             ) : (
               <div className="space-y-4">
+                <AdminSearchInput
+                  value={providerSearch}
+                  onChange={setProviderSearch}
+                  placeholder="Search providers, ids, or slugs"
+                />
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900">Provider Registry</h3>
                     <p className="mt-1 text-xs text-slate-500">
-                      Showing {providers.length === 0 ? 0 : providerStart + 1}-{providerEnd} of {providers.length}
+                      Showing {filteredProviders.length === 0 ? 0 : providerStart + 1}-{providerEnd} of {filteredProviders.length}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -748,6 +821,9 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
                   </div>
                 </div>
 
+                {filteredProviders.length === 0 ? (
+                  <AdminEmptyState title="No matching providers" description="Try a different search." />
+                ) : (
                 <div className="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="space-y-2">
@@ -839,6 +915,7 @@ export function LLMRegistryManager({ canManage }: LLMRegistryManagerProps) {
                     </div>
                   )}
                 </div>
+                )}
               </div>
             )}
           </section>

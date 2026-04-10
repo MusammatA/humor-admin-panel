@@ -1,7 +1,8 @@
 "use client";
 
 import { BookText, Plus, Save, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { AdminEmptyState, AdminLoadingState, AdminSearchInput, useAdminToast } from "./admin-feedback";
 import { getErrorMessage } from "../../lib/services/client";
 import { addTerm, deleteTerm, fetchTerms, updateTerm } from "../../lib/services/terms";
 import type { Term } from "../../types";
@@ -46,10 +47,12 @@ function parseOptionalNumber(value: string) {
 }
 
 export function TermsManager({ canManage }: TermsManagerProps) {
+  const { notify } = useAdminToast();
   const [terms, setTerms] = useState<Term[]>([]);
   const [drafts, setDrafts] = useState<Record<string, TermDraft>>({});
   const [selectedTermId, setSelectedTermId] = useState("");
   const [currentPage, setCurrentPage] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const [newTerm, setNewTerm] = useState<TermDraft>({
     term: "",
     definition: "",
@@ -94,17 +97,32 @@ export function TermsManager({ canManage }: TermsManagerProps) {
   }, [terms]);
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(terms.length / TERMS_PAGE_SIZE) - 1);
-    setCurrentPage((page) => Math.min(page, maxPage));
-  }, [terms.length]);
+    setCurrentPage(0);
+  }, [searchQuery]);
 
-  const pageCount = Math.max(1, Math.ceil(terms.length / TERMS_PAGE_SIZE));
+  const filteredTerms = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return terms;
+
+    return terms.filter((row) =>
+      [row.term, row.definition, row.example, row.id, row.priority, row.term_type_id]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [searchQuery, terms]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredTerms.length / TERMS_PAGE_SIZE) - 1);
+    setCurrentPage((page) => Math.min(page, maxPage));
+  }, [filteredTerms.length]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredTerms.length / TERMS_PAGE_SIZE));
   const pageStart = currentPage * TERMS_PAGE_SIZE;
-  const pagedTerms = terms.slice(pageStart, pageStart + TERMS_PAGE_SIZE);
-  const pageEnd = Math.min(pageStart + pagedTerms.length, terms.length);
+  const pagedTerms = filteredTerms.slice(pageStart, pageStart + TERMS_PAGE_SIZE);
+  const pageEnd = Math.min(pageStart + pagedTerms.length, filteredTerms.length);
   const selectedTerm =
     pagedTerms.find((row) => getTermId(row) === selectedTermId) ??
-    terms.find((row) => getTermId(row) === selectedTermId) ??
+    filteredTerms.find((row) => getTermId(row) === selectedTermId) ??
     pagedTerms[0] ??
     null;
 
@@ -153,9 +171,12 @@ export function TermsManager({ canManage }: TermsManagerProps) {
       });
       setNewTerm({ term: "", definition: "", example: "", priority: "0", termTypeId: "" });
       setMessage(`Added term ${term}.`);
+      notify({ type: "success", title: "Term added", message: term });
       await loadTerms();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not add term", message });
     } finally {
       setBusy(false);
     }
@@ -195,9 +216,12 @@ export function TermsManager({ canManage }: TermsManagerProps) {
         },
       );
       setMessage(`Saved term ${term}.`);
+      notify({ type: "success", title: "Term saved", message: term });
       await loadTerms();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not save term", message });
     } finally {
       setBusy(false);
     }
@@ -223,9 +247,12 @@ export function TermsManager({ canManage }: TermsManagerProps) {
     try {
       await deleteTerm({ id });
       setMessage(`Deleted term ${term}.`);
+      notify({ type: "success", title: "Term deleted", message: term });
       await loadTerms();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not delete term", message });
     } finally {
       setBusy(false);
     }
@@ -317,16 +344,16 @@ export function TermsManager({ canManage }: TermsManagerProps) {
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         {loading ? (
-          <p className="text-sm text-slate-500">Loading terms...</p>
+          <AdminLoadingState label="Loading terms..." />
         ) : terms.length === 0 ? (
-          <p className="text-sm text-slate-500">No terms returned.</p>
+          <AdminEmptyState title="No terms found" description="Add the first glossary term above." />
         ) : (
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Term Directory</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Showing {terms.length === 0 ? 0 : pageStart + 1}-{pageEnd} of {terms.length}
+                  Showing {filteredTerms.length === 0 ? 0 : pageStart + 1}-{pageEnd} of {filteredTerms.length}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -352,6 +379,15 @@ export function TermsManager({ canManage }: TermsManagerProps) {
               </div>
             </div>
 
+            <AdminSearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder="Search terms, definitions, examples, or ids"
+            />
+
+            {filteredTerms.length === 0 ? (
+              <AdminEmptyState title="No matching terms" description="Try a different search." />
+            ) : (
             <div className="grid gap-4 xl:grid-cols-[20rem_minmax(0,1fr)]">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="space-y-2">
@@ -483,6 +519,7 @@ export function TermsManager({ canManage }: TermsManagerProps) {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
       </section>

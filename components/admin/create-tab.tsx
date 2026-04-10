@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight, Pencil, RotateCcw, Trash2, Undo2, UploadCloud } from "lucide-react";
+import { AdminEmptyState, AdminLoadingState, AdminSearchInput, useAdminToast } from "./admin-feedback";
 import {
   createCaptionRecord,
   deleteCaptionById,
@@ -104,6 +105,7 @@ export function CreateTab({
   title = "Create",
   description,
 }: CreateTabProps) {
+  const { notify } = useAdminToast();
   const [images, setImages] = useState<Row[]>([]);
   const [captions, setCaptions] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,6 +116,8 @@ export function CreateTab({
   const [selectedMemeKey, setSelectedMemeKey] = useState("");
   const [catalogPage, setCatalogPage] = useState(0);
   const [detailCaptionsPage, setDetailCaptionsPage] = useState(0);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  const [detailCaptionSearch, setDetailCaptionSearch] = useState("");
 
   const [file, setFile] = useState<File | null>(null);
   const [replaceFile, setReplaceFile] = useState<File | null>(null);
@@ -210,31 +214,54 @@ export function CreateTab({
 
   useEffect(() => {
     setCatalogPage(0);
-  }, [catalogMemes.length]);
+  }, [catalogMemes.length, catalogSearch]);
 
   useEffect(() => {
     setDetailCaptionsPage(0);
-  }, [selectedMemeKey, viewMode]);
+  }, [detailCaptionSearch, selectedMemeKey, viewMode]);
+
+  const filteredCatalogMemes = useMemo(() => {
+    const query = catalogSearch.trim().toLowerCase();
+    if (!query) return catalogMemes;
+
+    return catalogMemes.filter((meme) =>
+      [meme.imageId, meme.imageUrl, ...meme.captions.map((caption) => getCaptionText(caption))]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [catalogMemes, catalogSearch]);
 
   const selectedMeme = useMemo(
     () => catalogMemes.find((meme) => meme.key === selectedMemeKey) ?? null,
     [catalogMemes, selectedMemeKey],
   );
 
-  const catalogPageCount = Math.max(1, Math.ceil(catalogMemes.length / CATALOG_PAGE_SIZE));
+  const catalogPageCount = Math.max(1, Math.ceil(filteredCatalogMemes.length / CATALOG_PAGE_SIZE));
   const currentCatalogPage = Math.min(catalogPage, catalogPageCount - 1);
-  const visibleCatalogMemes = catalogMemes.slice(
+  const visibleCatalogMemes = filteredCatalogMemes.slice(
     currentCatalogPage * CATALOG_PAGE_SIZE,
     currentCatalogPage * CATALOG_PAGE_SIZE + CATALOG_PAGE_SIZE,
   );
 
+  const filteredSelectedCaptions = useMemo(() => {
+    const captions = selectedMeme?.captions ?? [];
+    const query = detailCaptionSearch.trim().toLowerCase();
+    if (!query) return captions;
+
+    return captions.filter((caption) =>
+      [getCaptionText(caption), getCaptionId(caption), getCaptionImageId(caption), getCaptionImageUrl(caption)]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [detailCaptionSearch, selectedMeme]);
+
   const detailCaptionsPageCount = Math.max(
     1,
-    Math.ceil((selectedMeme?.captions.length ?? 0) / DETAIL_CAPTIONS_PAGE_SIZE),
+    Math.ceil(filteredSelectedCaptions.length / DETAIL_CAPTIONS_PAGE_SIZE),
   );
   const currentDetailCaptionsPage = Math.min(detailCaptionsPage, detailCaptionsPageCount - 1);
   const visibleSelectedCaptions = selectedMeme
-    ? selectedMeme.captions.slice(
+    ? filteredSelectedCaptions.slice(
         currentDetailCaptionsPage * DETAIL_CAPTIONS_PAGE_SIZE,
         currentDetailCaptionsPage * DETAIL_CAPTIONS_PAGE_SIZE + DETAIL_CAPTIONS_PAGE_SIZE,
       )
@@ -294,11 +321,17 @@ export function CreateTab({
             : "Image uploaded successfully."
           : "Image uploaded successfully.",
       );
+      notify({
+        type: "success",
+        title: trimmedUploadCaption && captionAdded ? "Image and caption uploaded" : "Image uploaded",
+      });
       setFile(null);
       setUploadCaption("");
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Upload failed", message });
     }
   }
 
@@ -315,9 +348,12 @@ export function CreateTab({
       }
       setNewCaption("");
       setMessage("Caption created.");
+      notify({ type: "success", title: "Caption created" });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not create caption", message });
     }
   }
 
@@ -332,9 +368,12 @@ export function CreateTab({
       setUndoStack((prev) => [...prev, { type: "image-replace", imageId: selectedImageId, previousUrl }]);
       setReplaceFile(null);
       setMessage("Image replaced.");
+      notify({ type: "success", title: "Image replaced" });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not replace image", message });
     }
   }
 
@@ -351,9 +390,12 @@ export function CreateTab({
       await updateCaptionText(captionId, next);
       setUndoStack((prev) => [...prev, { type: "caption-update", captionId, previousText: current }]);
       setMessage("Caption updated.");
+      notify({ type: "success", title: "Caption updated" });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not update caption", message });
     }
   }
 
@@ -364,9 +406,12 @@ export function CreateTab({
     try {
       await deleteCaptionById(captionId);
       setMessage("Caption deleted.");
+      notify({ type: "success", title: "Caption deleted" });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not delete caption", message });
     }
   }
 
@@ -390,11 +435,15 @@ export function CreateTab({
       await loadData();
       if (storageWarning) {
         setError(storageWarning);
+        notify({ type: "error", title: "Storage cleanup warning", message: storageWarning });
       } else {
         setMessage("Meme deleted from the database and storage.");
+        notify({ type: "success", title: "Meme deleted" });
       }
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not delete meme", message });
     }
   }
 
@@ -437,9 +486,12 @@ export function CreateTab({
       }
 
       setMessage("Selected meme reset to original image and captions.");
+      notify({ type: "success", title: "Meme reset" });
       await loadData();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not reset meme", message });
     }
   }
 
@@ -452,9 +504,12 @@ export function CreateTab({
         await deleteCaptionById(action.captionId);
         setUndoStack((prev) => prev.slice(0, -1));
         setMessage("Undid caption creation.");
+        notify({ type: "success", title: "Undo complete" });
         await loadData();
       } catch (error) {
-        setError(getErrorMessage(error));
+        const message = getErrorMessage(error);
+        setError(message);
+        notify({ type: "error", title: "Undo failed", message });
       }
       return;
     }
@@ -464,9 +519,12 @@ export function CreateTab({
         await updateCaptionText(action.captionId, action.previousText);
         setUndoStack((prev) => prev.slice(0, -1));
         setMessage("Undid caption update.");
+        notify({ type: "success", title: "Undo complete" });
         await loadData();
       } catch (error) {
-        setError(getErrorMessage(error));
+        const message = getErrorMessage(error);
+        setError(message);
+        notify({ type: "error", title: "Undo failed", message });
       }
       return;
     }
@@ -476,9 +534,12 @@ export function CreateTab({
         await updateImageUrl(action.imageId, action.previousUrl);
         setUndoStack((prev) => prev.slice(0, -1));
         setMessage("Undid image replacement.");
+        notify({ type: "success", title: "Undo complete" });
         await loadData();
       } catch (error) {
-        setError(getErrorMessage(error));
+        const message = getErrorMessage(error);
+        setError(message);
+        notify({ type: "error", title: "Undo failed", message });
       }
       return;
     }
@@ -547,12 +608,12 @@ export function CreateTab({
           <div className="mb-3 flex items-center justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Meme Catalog</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                {catalogMemes.length
+          <p className="mt-1 text-xs text-slate-500">
+                {filteredCatalogMemes.length
                   ? `Showing ${currentCatalogPage * CATALOG_PAGE_SIZE + 1}-${Math.min(
                       (currentCatalogPage + 1) * CATALOG_PAGE_SIZE,
-                      catalogMemes.length,
-                    )} of ${catalogMemes.length}`
+                      filteredCatalogMemes.length,
+                    )} of ${filteredCatalogMemes.length}`
                   : "No memes found"}
               </p>
             </div>
@@ -584,8 +645,18 @@ export function CreateTab({
               </button>
             </div>
           </div>
+          <AdminSearchInput
+            value={catalogSearch}
+            onChange={setCatalogSearch}
+            placeholder="Search image ids, urls, or caption text"
+            className="mb-4"
+          />
           {loading ? (
-            <p className="text-sm text-slate-500">Loading memes...</p>
+            <AdminLoadingState label="Loading memes..." />
+          ) : catalogMemes.length === 0 ? (
+            <AdminEmptyState title="No memes found" description="Upload the first image above." />
+          ) : filteredCatalogMemes.length === 0 ? (
+            <AdminEmptyState title="No matching memes" description="Try a different search." />
           ) : (
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {visibleCatalogMemes.map((meme) => {
@@ -735,12 +806,14 @@ export function CreateTab({
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900">All Captions</h3>
                     <p className="mt-1 text-xs text-slate-500">
-                      {selectedMeme.captions.length
+                      {filteredSelectedCaptions.length
                         ? `Showing ${currentDetailCaptionsPage * DETAIL_CAPTIONS_PAGE_SIZE + 1}-${Math.min(
                             (currentDetailCaptionsPage + 1) * DETAIL_CAPTIONS_PAGE_SIZE,
-                            selectedMeme.captions.length,
-                          )} of ${selectedMeme.captions.length}`
-                        : "No captions found"}
+                            filteredSelectedCaptions.length,
+                          )} of ${filteredSelectedCaptions.length}`
+                        : selectedMeme.captions.length
+                          ? "No matching captions"
+                          : "No captions found"}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -764,9 +837,17 @@ export function CreateTab({
                     </button>
                   </div>
                 </div>
+                <AdminSearchInput
+                  value={detailCaptionSearch}
+                  onChange={setDetailCaptionSearch}
+                  placeholder="Search captions or caption ids"
+                  className="mt-3"
+                />
                 <div className="mt-2 space-y-2">
                   {selectedMeme.captions.length === 0 ? (
-                    <p className="text-xs text-slate-500">No captions found.</p>
+                    <AdminEmptyState title="No captions found" description="Add the first caption from the admin actions box." />
+                  ) : filteredSelectedCaptions.length === 0 ? (
+                    <AdminEmptyState title="No matching captions" description="Try a different search." />
                   ) : (
                     visibleSelectedCaptions.map((caption, index) => {
                       const captionId = getCaptionId(caption);

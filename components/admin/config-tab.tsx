@@ -1,7 +1,8 @@
 "use client";
 
 import { Cpu, Globe2, Plus, RefreshCw, Save, Sparkles, Trash2, Users } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { AdminEmptyState, AdminLoadingState, AdminSearchInput, useAdminToast } from "./admin-feedback";
 import { LLMModelsManager } from "./llm-models-manager";
 import {
   addAllowedDomain,
@@ -221,6 +222,7 @@ type ConfigTabProps = {
 const DOMAINS_PAGE_SIZE = 20;
 
 export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
+  const { notify } = useAdminToast();
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [humorFlavors, setHumorFlavors] = useState<HumorFlavor[]>([]);
   const [humorSteps, setHumorSteps] = useState<HumorStep[]>([]);
@@ -236,6 +238,7 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   const [domainDrafts, setDomainDrafts] = useState<Record<string, string>>({});
   const [newProviderName, setNewProviderName] = useState("");
   const [newDomain, setNewDomain] = useState("");
+  const [domainSearch, setDomainSearch] = useState("");
   const [selectedFlavorRef, setSelectedFlavorRef] = useState("");
   const [domainPage, setDomainPage] = useState(0);
   const [stepsLoading, setStepsLoading] = useState(false);
@@ -334,9 +337,24 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   }, [humorFlavors, selectedFlavorRef]);
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(domains.length / DOMAINS_PAGE_SIZE) - 1);
+    setDomainPage(0);
+  }, [domainSearch]);
+
+  const filteredDomains = useMemo(() => {
+    const query = domainSearch.trim().toLowerCase();
+    if (!query) return domains;
+
+    return domains.filter((row) =>
+      [getDomainValue(row), getDomainId(row), row.domain, row.apex_domain, row.host]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [domainSearch, domains]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredDomains.length / DOMAINS_PAGE_SIZE) - 1);
     setDomainPage((page) => Math.min(page, maxPage));
-  }, [domains.length]);
+  }, [filteredDomains.length]);
 
   useEffect(() => {
     async function loadSteps() {
@@ -377,9 +395,12 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
       await updateHumorMix(id, coerceDraftValue(nextDraft, row.val));
       setActionError(null);
       setMessage(`Updated humor_mix row ${id}.`);
+      notify({ type: "success", title: "Mix setting saved", message: getMixSettingLabel(row) });
       await loadConfigData();
     } catch (error) {
-      setActionError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setActionError(message);
+      notify({ type: "error", title: "Could not save mix setting", message });
     }
   }
 
@@ -401,10 +422,13 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
       }
       setActionError(null);
       setMessage(providerId ? `Saved provider ${name}.` : `Created provider ${name}.`);
+      notify({ type: "success", title: providerId ? "Provider saved" : "Provider added", message: name });
       if (!providerId) setNewProviderName("");
       await loadConfigData();
     } catch (error) {
-      setActionError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setActionError(message);
+      notify({ type: "error", title: "Provider update failed", message });
     }
   }
 
@@ -420,9 +444,12 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
       await deleteProviderRecord({ id: providerId, name: providerName });
       setActionError(null);
       setMessage(`Deleted provider ${providerName || providerId}.`);
+      notify({ type: "success", title: "Provider deleted", message: providerName || providerId });
       await loadConfigData();
     } catch (error) {
-      setActionError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setActionError(message);
+      notify({ type: "error", title: "Could not delete provider", message });
     }
   }
 
@@ -450,10 +477,13 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
       }
       setActionError(null);
       setMessage(row ? `Saved domain ${nextDomain}.` : `Added domain ${nextDomain}.`);
+      notify({ type: "success", title: row ? "Domain saved" : "Domain added", message: nextDomain });
       if (!row) setNewDomain("");
       await loadConfigData();
     } catch (error) {
-      setActionError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setActionError(message);
+      notify({ type: "error", title: "Domain update failed", message });
     }
   }
 
@@ -465,13 +495,19 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
       return;
     }
 
+    const confirmed = window.confirm(`Delete allowed domain ${domain || domainId}?`);
+    if (!confirmed) return;
+
     try {
       await deleteAllowedDomain({ id: domainId, domain });
       setActionError(null);
       setMessage(`Deleted domain ${domain || domainId}.`);
+      notify({ type: "success", title: "Domain deleted", message: domain || domainId });
       await loadConfigData();
     } catch (error) {
-      setActionError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setActionError(message);
+      notify({ type: "error", title: "Could not delete domain", message });
     }
   }
 
@@ -485,10 +521,10 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
   const showDomains = focusSection === "all" || focusSection === "allowed-domains";
   const upperSectionCount = [showProfiles, showFlavorSection].filter(Boolean).length;
   const middleSectionCount = [showHumorMix, showProviders, showModels].filter(Boolean).length;
-  const domainPageCount = Math.max(1, Math.ceil(domains.length / DOMAINS_PAGE_SIZE));
+  const domainPageCount = Math.max(1, Math.ceil(filteredDomains.length / DOMAINS_PAGE_SIZE));
   const domainStart = domainPage * DOMAINS_PAGE_SIZE;
-  const pagedDomains = domains.slice(domainStart, domainStart + DOMAINS_PAGE_SIZE);
-  const domainEnd = Math.min(domainStart + pagedDomains.length, domains.length);
+  const pagedDomains = filteredDomains.slice(domainStart, domainStart + DOMAINS_PAGE_SIZE);
+  const domainEnd = Math.min(domainStart + pagedDomains.length, filteredDomains.length);
 
   return (
     <section className="space-y-6">
@@ -790,14 +826,23 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
             </button>
           </div>
           {loading ? (
-            <p className="mt-4 text-sm text-slate-500">Loading domains...</p>
+            <div className="mt-4">
+              <AdminLoadingState label="Loading domains..." />
+            </div>
           ) : domains.length === 0 ? (
-            <p className="mt-4 text-sm text-slate-500">No allowed domains returned.</p>
+            <div className="mt-4">
+              <AdminEmptyState title="No allowed domains found" description="Add the first approved signup domain above." />
+            </div>
           ) : (
             <div className="mt-4 space-y-3">
+              <AdminSearchInput
+                value={domainSearch}
+                onChange={setDomainSearch}
+                placeholder="Search domains or ids"
+              />
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-slate-500">
-                  Showing {domains.length === 0 ? 0 : domainStart + 1}-{domainEnd} of {domains.length}
+                  Showing {filteredDomains.length === 0 ? 0 : domainStart + 1}-{domainEnd} of {filteredDomains.length}
                 </p>
                 <div className="flex items-center gap-2">
                   <button
@@ -818,7 +863,9 @@ export function ConfigTab({ focusSection = "all" }: ConfigTabProps) {
                   </button>
                 </div>
               </div>
-              {pagedDomains.map((row) => {
+              {filteredDomains.length === 0 ? (
+                <AdminEmptyState title="No matching domains" description="Try a different search." />
+              ) : pagedDomains.map((row) => {
                 const id = getDomainId(row);
                 const domain = getDomainValue(row);
                 const key = id || domain;

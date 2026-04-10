@@ -1,7 +1,8 @@
 "use client";
 
 import { Mail, Plus, ShieldCheck, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { AdminEmptyState, AdminLoadingState, AdminSearchInput, useAdminToast } from "./admin-feedback";
 import { getErrorMessage, getSupabaseBrowserClientOrThrow } from "../../lib/services/client";
 import type { WhitelistedEmail } from "../../types";
 
@@ -33,11 +34,13 @@ function getEntrySuperadmin(row: WhitelistedEmail) {
 }
 
 export function WhitelistManager({ canManage }: WhitelistManagerProps) {
+  const { notify } = useAdminToast();
   const [entries, setEntries] = useState<WhitelistedEmail[]>([]);
   const [drafts, setDrafts] = useState<Record<string, EntryDraft>>({});
   const [newEmail, setNewEmail] = useState("");
   const [newIsSuperadmin, setNewIsSuperadmin] = useState(false);
   const [currentPage, setCurrentPage] = useState(0);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,14 +96,30 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
   }, [entries]);
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(entries.length / ENTRIES_PAGE_SIZE) - 1);
-    setCurrentPage((page) => Math.min(page, maxPage));
-  }, [entries.length]);
+    setCurrentPage(0);
+  }, [searchQuery]);
 
-  const pageCount = Math.max(1, Math.ceil(entries.length / ENTRIES_PAGE_SIZE));
+  const filteredEntries = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return entries;
+
+    return entries.filter((row) =>
+      [getEntryEmail(row), getEntryId(row), getEntrySuperadmin(row) ? "superadmin" : "standard"]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [entries, searchQuery]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredEntries.length / ENTRIES_PAGE_SIZE) - 1);
+    setCurrentPage((page) => Math.min(page, maxPage));
+  }, [filteredEntries.length]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredEntries.length / ENTRIES_PAGE_SIZE));
   const pageStart = currentPage * ENTRIES_PAGE_SIZE;
-  const pagedEntries = entries.slice(pageStart, pageStart + ENTRIES_PAGE_SIZE);
-  const pageEnd = Math.min(pageStart + pagedEntries.length, entries.length);
+  const pagedEntries = filteredEntries.slice(pageStart, pageStart + ENTRIES_PAGE_SIZE);
+  const pageEnd = Math.min(pageStart + pagedEntries.length, filteredEntries.length);
 
   async function addEntry() {
     if (!canManage) return;
@@ -136,9 +155,12 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
       setNewEmail("");
       setNewIsSuperadmin(false);
       setMessage(`Added ${email} to whitelisted_emails.`);
+      notify({ type: "success", title: "Email added", message: email });
       await loadEntries();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not add email", message });
     } finally {
       setBusy(false);
     }
@@ -180,9 +202,12 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
       }
 
       setMessage(`Updated ${email}.`);
+      notify({ type: "success", title: "Email updated", message: email });
       await loadEntries();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not update email", message });
     } finally {
       setBusy(false);
     }
@@ -214,9 +239,12 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
       }
 
       setMessage(`Deleted ${email || id}.`);
+      notify({ type: "success", title: "Email deleted", message: email || id });
       await loadEntries();
     } catch (error) {
-      setError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      setError(message);
+      notify({ type: "error", title: "Could not delete email", message });
     } finally {
       setBusy(false);
     }
@@ -284,14 +312,23 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
       </div>
 
       {loading ? (
-        <p className="mt-5 text-sm text-slate-500">Loading whitelisted emails...</p>
+        <div className="mt-5">
+          <AdminLoadingState label="Loading whitelisted emails..." />
+        </div>
       ) : entries.length === 0 ? (
-        <p className="mt-5 text-sm text-slate-500">No whitelisted emails returned.</p>
+        <div className="mt-5">
+          <AdminEmptyState title="No whitelisted emails found" description="Add the first admin email above." />
+        </div>
       ) : (
         <div className="mt-5 space-y-3">
+          <AdminSearchInput
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search emails, ids, or superadmin"
+          />
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-500">
-              Showing {entries.length === 0 ? 0 : pageStart + 1}-{pageEnd} of {entries.length}
+              Showing {filteredEntries.length === 0 ? 0 : pageStart + 1}-{pageEnd} of {filteredEntries.length}
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -313,7 +350,9 @@ export function WhitelistManager({ canManage }: WhitelistManagerProps) {
             </div>
           </div>
 
-          {pagedEntries.map((row) => {
+          {filteredEntries.length === 0 ? (
+            <AdminEmptyState title="No matching emails" description="Try a different search." />
+          ) : pagedEntries.map((row) => {
             const id = getEntryId(row);
             const draft = drafts[id] ?? { email: getEntryEmail(row), isSuperadmin: getEntrySuperadmin(row) };
 

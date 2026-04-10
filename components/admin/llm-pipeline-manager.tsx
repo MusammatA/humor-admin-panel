@@ -2,6 +2,7 @@
 
 import { FileText, Link2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { AdminEmptyState, AdminLoadingState, AdminSearchInput } from "./admin-feedback";
 import { getErrorMessage } from "../../lib/services/client";
 import { fetchPromptChains, fetchResponses } from "../../lib/services/llm";
 import type { LLMPromptChain, LLMResponse } from "../../types";
@@ -30,6 +31,8 @@ export function LLMPipelineManager({ responseLimit = 1000 }: LLMPipelineManagerP
   const [error, setError] = useState<string | null>(null);
   const [chainPage, setChainPage] = useState(0);
   const [responsePage, setResponsePage] = useState(0);
+  const [chainSearch, setChainSearch] = useState("");
+  const [responseSearch, setResponseSearch] = useState("");
   const [selectedChainId, setSelectedChainId] = useState("");
 
   async function loadData() {
@@ -54,17 +57,36 @@ export function LLMPipelineManager({ responseLimit = 1000 }: LLMPipelineManagerP
   }, [responseLimit]);
 
   useEffect(() => {
-    const maxPage = Math.max(0, Math.ceil(chains.length / CHAINS_PAGE_SIZE) - 1);
-    setChainPage((page) => Math.min(page, maxPage));
-  }, [chains.length]);
+    setChainPage(0);
+  }, [chainSearch]);
 
-  const chainPageCount = Math.max(1, Math.ceil(chains.length / CHAINS_PAGE_SIZE));
+  useEffect(() => {
+    setResponsePage(0);
+  }, [responseSearch, selectedChainId]);
+
+  const filteredChains = useMemo(() => {
+    const query = chainSearch.trim().toLowerCase();
+    if (!query) return chains;
+
+    return chains.filter((row) =>
+      [row.id, row.caption_request_id, row.created_datetime_utc, row.created_at]
+        .map((value) => String(value ?? "").toLowerCase())
+        .some((value) => value.includes(query)),
+    );
+  }, [chainSearch, chains]);
+
+  useEffect(() => {
+    const maxPage = Math.max(0, Math.ceil(filteredChains.length / CHAINS_PAGE_SIZE) - 1);
+    setChainPage((page) => Math.min(page, maxPage));
+  }, [filteredChains.length]);
+
+  const chainPageCount = Math.max(1, Math.ceil(filteredChains.length / CHAINS_PAGE_SIZE));
   const chainStart = chainPage * CHAINS_PAGE_SIZE;
-  const pagedChains = chains.slice(chainStart, chainStart + CHAINS_PAGE_SIZE);
-  const chainEnd = Math.min(chainStart + pagedChains.length, chains.length);
+  const pagedChains = filteredChains.slice(chainStart, chainStart + CHAINS_PAGE_SIZE);
+  const chainEnd = Math.min(chainStart + pagedChains.length, filteredChains.length);
   const selectedChain =
     pagedChains.find((row) => getChainId(row) === selectedChainId) ??
-    chains.find((row) => getChainId(row) === selectedChainId) ??
+    filteredChains.find((row) => getChainId(row) === selectedChainId) ??
     pagedChains[0] ??
     null;
 
@@ -103,8 +125,17 @@ export function LLMPipelineManager({ responseLimit = 1000 }: LLMPipelineManagerP
 
   const filteredResponses = useMemo(() => {
     const activeChainId = selectedChain ? getChainId(selectedChain) : "";
-    return responses.filter((row) => String(row.llm_prompt_chain_id ?? "") === activeChainId);
-  }, [responses, selectedChain]);
+    const query = responseSearch.trim().toLowerCase();
+
+    return responses
+      .filter((row) => String(row.llm_prompt_chain_id ?? "") === activeChainId)
+      .filter((row) => {
+        if (!query) return true;
+        return [row.id, row.caption_request_id, row.llm_model_id, row.created_datetime_utc, row.llm_model_response]
+          .map((value) => String(value ?? "").toLowerCase())
+          .some((value) => value.includes(query));
+      });
+  }, [responseSearch, responses, selectedChain]);
 
   useEffect(() => {
     const maxPage = Math.max(0, Math.ceil(filteredResponses.length / RESPONSES_PAGE_SIZE) - 1);
@@ -145,18 +176,23 @@ export function LLMPipelineManager({ responseLimit = 1000 }: LLMPipelineManagerP
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         {loading ? (
-          <p className="text-sm text-slate-500">Loading prompt chains and llm responses...</p>
+          <AdminLoadingState label="Loading prompt chains and LLM responses..." />
         ) : chains.length === 0 ? (
-          <p className="text-sm text-slate-500">No prompt chains returned.</p>
+          <AdminEmptyState title="No prompt chains found" description="Prompt-chain rows will appear here once available." />
         ) : (
           <div className="space-y-4">
             <div className="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
               <div className="space-y-4">
+                <AdminSearchInput
+                  value={chainSearch}
+                  onChange={setChainSearch}
+                  placeholder="Search chains, request ids, or dates"
+                />
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="text-sm font-semibold text-slate-900">Chain Directory</h3>
                     <p className="mt-1 text-xs text-slate-500">
-                      Showing {chains.length === 0 ? 0 : chainStart + 1}-{chainEnd} of {chains.length}
+                      Showing {filteredChains.length === 0 ? 0 : chainStart + 1}-{chainEnd} of {filteredChains.length}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -179,6 +215,9 @@ export function LLMPipelineManager({ responseLimit = 1000 }: LLMPipelineManagerP
                   </div>
                 </div>
 
+                {filteredChains.length === 0 ? (
+                  <AdminEmptyState title="No matching chains" description="Try a different search." />
+                ) : (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="space-y-2">
                     {pagedChains.map((row) => {
@@ -213,6 +252,7 @@ export function LLMPipelineManager({ responseLimit = 1000 }: LLMPipelineManagerP
                     })}
                   </div>
                 </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -258,8 +298,17 @@ export function LLMPipelineManager({ responseLimit = 1000 }: LLMPipelineManagerP
                       </div>
                     </div>
 
+                    <AdminSearchInput
+                      value={responseSearch}
+                      onChange={setResponseSearch}
+                      placeholder="Search responses, model ids, request ids, or text"
+                      className="mt-4"
+                    />
+
                     {filteredResponses.length === 0 ? (
-                      <p className="mt-4 text-sm text-slate-500">No loaded response rows point at this chain.</p>
+                      <div className="mt-4">
+                        <AdminEmptyState title="No matching responses" description="This chain has no loaded responses, or the search filtered them out." />
+                      </div>
                     ) : (
                       <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
                         <table className="min-w-full text-left text-sm">
