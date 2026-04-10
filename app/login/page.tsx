@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Shield } from "lucide-react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
 
+const REMEMBER_SESSION_STORAGE_KEY = "admin_remember_session";
+
 async function fetchAdminStatusWithTimeout(ms: number) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -21,6 +23,7 @@ export default function LoginPage() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [signinError, setSigninError] = useState("");
   const [signingIn, setSigningIn] = useState(false);
+  const [rememberSession, setRememberSession] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +67,13 @@ export default function LoginPage() {
   }, [supabase, router]);
 
   useEffect(() => {
+    const storedPreference = window.localStorage.getItem(REMEMBER_SESSION_STORAGE_KEY);
+    if (storedPreference === "0") {
+      setRememberSession(false);
+    }
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error") || "";
     if (error === "domain_not_allowed") {
@@ -89,18 +99,21 @@ export default function LoginPage() {
 
     setSigninError("");
     setSigningIn(true);
+    window.localStorage.setItem(REMEMBER_SESSION_STORAGE_KEY, rememberSession ? "1" : "0");
 
     await supabase.auth.signOut();
 
-    const callbackUrl = `${window.location.origin}/auth/callback`;
+    const callbackUrl = `${window.location.origin}/auth/callback?remember=${rememberSession ? "1" : "0"}`;
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         redirectTo: callbackUrl,
         skipBrowserRedirect: true,
-        queryParams: {
-          prompt: "select_account",
-        },
+        queryParams: rememberSession
+          ? undefined
+          : {
+              prompt: "select_account",
+            },
       },
     });
 
@@ -169,6 +182,21 @@ export default function LoginPage() {
           >
             {signingIn ? "Redirecting to Google..." : "Sign in with Google"}
           </button>
+
+          <label className="mx-auto mt-5 flex w-full max-w-md cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm text-slate-600">
+            <input
+              checked={rememberSession}
+              onChange={(event) => setRememberSession(event.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-emerald-600"
+              type="checkbox"
+            />
+            <span>
+              <span className="block font-semibold text-slate-800">Stay signed in</span>
+              <span className="block text-xs text-slate-500">
+                Keep this admin session on this browser so returning is faster.
+              </span>
+            </span>
+          </label>
 
           <p className="mt-4 text-xs text-slate-500">
             You will be redirected back to this website after Google authentication.

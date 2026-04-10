@@ -3,6 +3,11 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./lib/supabase-config";
 import { isAdminEmailAllowed } from "./lib/admin-allowlist";
+import {
+  ADMIN_REMEMBER_SESSION_COOKIE,
+  makeSessionScopedCookieOptions,
+  shouldRememberAdminSession,
+} from "./lib/auth-session-preferences";
 
 function hasSuperadminById(row: { id?: unknown; is_superadmin?: unknown } | null, expectedId: string): boolean {
   if (!row) return false;
@@ -19,6 +24,7 @@ export async function middleware(req: NextRequest) {
       headers: req.headers,
     },
   });
+  const rememberSession = shouldRememberAdminSession(req.cookies.get(ADMIN_REMEMBER_SESSION_COOKIE)?.value);
 
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
@@ -27,7 +33,7 @@ export async function middleware(req: NextRequest) {
       },
       setAll(cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>) {
         cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, options as any);
+          response.cookies.set(name, value, (rememberSession ? options : makeSessionScopedCookieOptions(options)) as any);
         });
       },
     },
