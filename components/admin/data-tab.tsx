@@ -183,6 +183,16 @@ function getVoteUserId(row: Row) {
   return str(row, ["profile_id", "user_id", "voter_user_id"]);
 }
 
+function getVoteCaptionId(row: Row) {
+  return str(row, ["caption_id", "target_caption_id"]);
+}
+
+function getVoteValue(row: Row) {
+  const raw = row.vote_value ?? row.value ?? row.vote;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
 function getProfileId(row: Row) {
   return str(row, ["id"]);
 }
@@ -295,7 +305,7 @@ export function DataTab({
   stats,
   canViewUserData = false,
   title = "Data",
-  description = "Top 20 caption words by frequency across all loaded caption rows.",
+  description = "See caption activity, rating trends, and topic patterns across the admin dataset.",
 }: DataTabProps) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [captions, setCaptions] = useState<Row[]>([]);
@@ -482,6 +492,105 @@ export function DataTab({
     return ranked;
   }, [images, votes, profiles]);
 
+  const captionRatings = useMemo(() => {
+    const captionMeta = new Map<
+      string,
+      {
+        id: string;
+        text: string;
+        imageId: string;
+        upvotes: number;
+        downvotes: number;
+        neutralVotes: number;
+        totalVotes: number;
+        score: number;
+      }
+    >();
+
+    for (const caption of captions) {
+      const id = str(caption, ["id", "caption_id"]);
+      if (!id) continue;
+      captionMeta.set(id, {
+        id,
+        text: captionText(caption),
+        imageId: getCaptionImageId(caption),
+        upvotes: 0,
+        downvotes: 0,
+        neutralVotes: 0,
+        totalVotes: 0,
+        score: 0,
+      });
+    }
+
+    let upvotes = 0;
+    let downvotes = 0;
+    let neutralVotes = 0;
+
+    for (const vote of votes) {
+      const captionId = getVoteCaptionId(vote);
+      if (!captionId) continue;
+      if (!captionMeta.has(captionId)) {
+        captionMeta.set(captionId, {
+          id: captionId,
+          text: "",
+          imageId: "",
+          upvotes: 0,
+          downvotes: 0,
+          neutralVotes: 0,
+          totalVotes: 0,
+          score: 0,
+        });
+      }
+
+      const entry = captionMeta.get(captionId)!;
+      const value = getVoteValue(vote);
+      entry.totalVotes += 1;
+      entry.score += value;
+
+      if (value > 0) {
+        entry.upvotes += 1;
+        upvotes += 1;
+      } else if (value < 0) {
+        entry.downvotes += 1;
+        downvotes += 1;
+      } else {
+        entry.neutralVotes += 1;
+        neutralVotes += 1;
+      }
+    }
+
+    const ratedCaptions = Array.from(captionMeta.values()).filter((entry) => entry.totalVotes > 0);
+    const topRated = [...ratedCaptions]
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.upvotes - a.upvotes ||
+          b.totalVotes - a.totalVotes ||
+          a.text.localeCompare(b.text),
+      )
+      .slice(0, 5);
+    const mostRated = [...ratedCaptions]
+      .sort(
+        (a, b) =>
+          b.totalVotes - a.totalVotes ||
+          b.score - a.score ||
+          b.upvotes - a.upvotes ||
+          a.text.localeCompare(b.text),
+      )
+      .slice(0, 5);
+
+    return {
+      totalVotes: votes.length,
+      upvotes,
+      downvotes,
+      neutralVotes,
+      ratedCaptionsCount: ratedCaptions.length,
+      averageVotesPerCaption: ratedCaptions.length ? votes.length / ratedCaptions.length : 0,
+      topRated,
+      mostRated,
+    };
+  }, [captions, votes]);
+
   const activeLeader = topActiveUsers[0];
   const maskedLeaderLabel = canViewUserData ? (activeLeader?.label ?? stats.mostActiveUser) : "Unavailable";
   const maskedLeaderSubtitle = canViewUserData
@@ -516,7 +625,7 @@ export function DataTab({
         ) : null}
       </header>
 
-      <section className="grid gap-4 md:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <StatCard
           title="Total Images"
           value={stats.totalImages.toLocaleString()}
@@ -541,7 +650,88 @@ export function DataTab({
           subtitle="Used in word frequency analysis"
           icon={BarChart3}
         />
+        <StatCard
+          title="Caption Ratings"
+          value={captionRatings.totalVotes.toLocaleString()}
+          subtitle={`${captionRatings.ratedCaptionsCount.toLocaleString()} captions received votes`}
+          icon={BarChart3}
+        />
+        <StatCard
+          title="Upvotes / Downvotes"
+          value={`${captionRatings.upvotes.toLocaleString()} / ${captionRatings.downvotes.toLocaleString()}`}
+          subtitle={`${captionRatings.neutralVotes.toLocaleString()} neutral votes`}
+          icon={Type}
+        />
       </section>
+
+      <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Caption Rating Overview</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              Live vote totals and caption performance from the loaded caption and vote tables.
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-right">
+            <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Average Ratings Per Caption</p>
+            <p className="mt-1 text-2xl font-semibold text-slate-900">
+              {captionRatings.averageVotesPerCaption.toFixed(1)}
+            </p>
+          </div>
+        </div>
+
+        {captionRatings.totalVotes === 0 ? (
+          <p className="mt-4 text-sm text-slate-500">No caption ratings are loaded yet.</p>
+        ) : (
+          <div className="mt-5 grid gap-4 xl:grid-cols-2">
+            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <h4 className="text-sm font-semibold text-slate-900">Top Rated Captions</h4>
+              <p className="mt-1 text-xs text-slate-500">Sorted by score first, then upvotes.</p>
+              <div className="mt-3 space-y-3">
+                {captionRatings.topRated.map((caption, index) => (
+                  <div key={caption.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-900">#{index + 1} Score {caption.score}</p>
+                      <p className="text-xs text-slate-500">
+                        {caption.upvotes} up / {caption.downvotes} down / {caption.totalVotes} total
+                      </p>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-700">
+                      {caption.text || "Caption text unavailable for this vote record."}
+                    </p>
+                    {caption.imageId ? (
+                      <p className="mt-2 font-mono text-[11px] text-slate-500">Image ID: {caption.imageId}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <h4 className="text-sm font-semibold text-slate-900">Most Rated Captions</h4>
+              <p className="mt-1 text-xs text-slate-500">Sorted by number of ratings received.</p>
+              <div className="mt-3 space-y-3">
+                {captionRatings.mostRated.map((caption, index) => (
+                  <div key={caption.id} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-sm font-semibold text-slate-900">
+                        #{index + 1} {caption.totalVotes} ratings
+                      </p>
+                      <p className="text-xs text-slate-500">Score {caption.score}</p>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-700">
+                      {caption.text || "Caption text unavailable for this vote record."}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {caption.upvotes} up / {caption.downvotes} down / {caption.neutralVotes} neutral
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+      </article>
 
       <article className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
