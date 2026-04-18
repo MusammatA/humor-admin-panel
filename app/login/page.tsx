@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Shield } from "lucide-react";
 import { createSupabaseBrowserClient } from "../../lib/supabase-browser";
+import { ADMIN_REMEMBER_SESSION_COOKIE } from "../../lib/auth-session-preferences";
 
 const REMEMBER_SESSION_STORAGE_KEY = "admin_remember_session";
 
@@ -100,10 +101,13 @@ export default function LoginPage() {
     setSigninError("");
     setSigningIn(true);
     window.localStorage.setItem(REMEMBER_SESSION_STORAGE_KEY, rememberSession ? "1" : "0");
+    document.cookie = rememberSession
+      ? `${ADMIN_REMEMBER_SESSION_COOKIE}=1; Path=/; Max-Age=${400 * 24 * 60 * 60}; SameSite=Lax`
+      : `${ADMIN_REMEMBER_SESSION_COOKIE}=0; Path=/; SameSite=Lax`;
 
     await supabase.auth.signOut();
 
-    const callbackUrl = `${window.location.origin}/auth/callback?remember=${rememberSession ? "1" : "0"}`;
+    const callbackUrl = `${window.location.origin}/auth/callback`;
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {

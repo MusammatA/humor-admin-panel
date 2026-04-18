@@ -25,7 +25,10 @@ export async function handleAdminAuthCallback(request: Request) {
   const reqUrl = new URL(request.url);
   const origin = reqUrl.origin;
   const code = reqUrl.searchParams.get("code");
-  const rememberSession = shouldRememberAdminSession(reqUrl.searchParams.get("remember"));
+  const cookieStore = await cookies();
+  const rememberSession = shouldRememberAdminSession(
+    reqUrl.searchParams.get("remember") ?? cookieStore.get(ADMIN_REMEMBER_SESSION_COOKIE)?.value,
+  );
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return NextResponse.redirect(`${origin}/login?error=missing_env`);
@@ -35,7 +38,6 @@ export async function handleAdminAuthCallback(request: Request) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`);
   }
 
-  const cookieStore = await cookies();
   cookieStore.set(
     ADMIN_REMEMBER_SESSION_COOKIE,
     rememberSession ? "1" : "0",
