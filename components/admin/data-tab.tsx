@@ -625,7 +625,7 @@ export function DataTab({
         ) : null}
       </header>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <StatCard
           title="Total Images"
           value={stats.totalImages.toLocaleString()}
