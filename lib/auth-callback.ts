@@ -4,11 +4,6 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./supabase-config";
 import { isAdminEmailAllowed } from "./admin-allowlist";
-import {
-  ADMIN_REMEMBER_SESSION_COOKIE,
-  makeSessionScopedCookieOptions,
-  shouldRememberAdminSession,
-} from "./auth-session-preferences";
 
 async function isSuperadminByUserId(client: any, userId: string): Promise<boolean> {
   if (!userId) return false;
@@ -25,10 +20,6 @@ export async function handleAdminAuthCallback(request: Request) {
   const reqUrl = new URL(request.url);
   const origin = reqUrl.origin;
   const code = reqUrl.searchParams.get("code");
-  const cookieStore = await cookies();
-  const rememberSession = shouldRememberAdminSession(
-    reqUrl.searchParams.get("remember") ?? cookieStore.get(ADMIN_REMEMBER_SESSION_COOKIE)?.value,
-  );
 
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
     return NextResponse.redirect(`${origin}/login?error=missing_env`);
@@ -38,15 +29,7 @@ export async function handleAdminAuthCallback(request: Request) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`);
   }
 
-  cookieStore.set(
-    ADMIN_REMEMBER_SESSION_COOKIE,
-    rememberSession ? "1" : "0",
-    {
-      path: "/",
-      sameSite: "lax",
-      ...(rememberSession ? { maxAge: 400 * 24 * 60 * 60 } : {}),
-    } as any,
-  );
+  const cookieStore = await cookies();
   const supabase = createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     cookies: {
       getAll() {
@@ -54,7 +37,7 @@ export async function handleAdminAuthCallback(request: Request) {
       },
       setAll(cookiesToSet: Array<{ name: string; value: string; options?: Record<string, unknown> }>) {
         cookiesToSet.forEach(({ name, value, options }) => {
-          cookieStore.set(name, value, (rememberSession ? options : makeSessionScopedCookieOptions(options)) as any);
+          cookieStore.set(name, value, options as any);
         });
       },
     },
